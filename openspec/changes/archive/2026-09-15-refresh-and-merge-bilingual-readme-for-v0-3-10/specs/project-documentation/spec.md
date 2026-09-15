@@ -1,8 +1,5 @@
-# project-documentation Specification
+## MODIFIED Requirements
 
-## Purpose
-Covers current bilingual project documentation, contributor commands, implemented capability claims, and links to detailed engineering contracts.
-## Requirements
 ### Requirement: Bilingual project overview
 The repository SHALL provide a root README whose English edition is followed by a complete Simplified Chinese edition, and SHALL retain a synchronized Simplified Chinese README for existing direct-language entry points. The English and Chinese editions SHALL present equivalent, current overviews of Markion's installation, implemented workflows, limitations, configuration, export behavior, Visual Edit WYSIWYG coverage (including the WYSIWYG coverage roadmap of known gaps), and contributor verification commands. The root README SHALL provide visible in-document language navigation, the standalone Chinese README SHALL link back to the root README, and both files SHALL link to the Visual Edit WYSIWYG coverage matrix. Stable capability purposes and project context metadata SHALL describe the current implemented architecture and MUST NOT characterize an archived capability as only future work.
 
@@ -31,4 +28,3 @@ The repository SHALL provide a root README whose English edition is followed by 
 - **WHEN** an archived change makes a previously future capability part of the stable system
 - **THEN** affected capability purposes and OpenSpec project context describe the implemented state
 - **AND** no stable metadata contradicts the archived requirements
-
