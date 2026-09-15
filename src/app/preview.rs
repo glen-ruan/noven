@@ -1618,8 +1618,17 @@ pub(super) fn rich_text_element(
     rich: &RichText,
     block_index: usize,
     run_id: PreviewTextRunId,
+    metrics: (f32, f32),
     cx: &mut Context<MarkionApp>,
 ) -> gpui::AnyElement {
+    if rich.text.contains('\n')
+        || rich
+            .spans
+            .iter()
+            .any(|span| span.style.superscript || span.style.subscript)
+    {
+        return rich_inline_fragments(app, id, rich, block_index, run_id, metrics, cx);
+    }
     let mut highlights: Vec<(Range<usize>, HighlightStyle)> = Vec::new();
     let mut link_ranges: Vec<Range<usize>> = Vec::new();
     let mut link_urls: Vec<String> = Vec::new();
@@ -1705,6 +1714,156 @@ pub(super) fn rich_text_element(
     .into_any_element()
 }
 
+/// (font size, line height, top offset) for a script fragment. The offset
+/// aligns actual font baselines instead of approximating with text color.
+pub(super) fn inline_script_metrics(
+    font_size: f32,
+    line_height: f32,
+    ascent: f32,
+    descent: f32,
+    subscript: bool,
+) -> (f32, f32, f32) {
+    let scale = 0.75;
+    let baseline = ((line_height - ascent - descent) / 2.).max(0.) + ascent;
+    let script_line = line_height * scale;
+    let script_baseline =
+        ((script_line - (ascent + descent) * scale) / 2.).max(0.) + ascent * scale;
+    let shift = font_size * if subscript { 0.2 } else { -0.35 };
+    (
+        font_size * scale,
+        script_line,
+        baseline + shift - script_baseline,
+    )
+}
+
+fn script_fragment(
+    child: gpui::AnyElement,
+    style: InlineStyle,
+    metrics: (f32, f32),
+    app: &MarkionApp,
+    cx: &App,
+) -> gpui::AnyElement {
+    if !style.superscript && !style.subscript {
+        return child;
+    }
+    let font_id = cx
+        .text_system()
+        .resolve_font(&font(app.resolved_font_families.rendered.clone()));
+    let ascent = f32::from(cx.text_system().ascent(font_id, px(metrics.0)));
+    let descent = f32::from(cx.text_system().descent(font_id, px(metrics.0)));
+    let (font_size, line_height, top) =
+        inline_script_metrics(metrics.0, metrics.1, ascent, descent, style.subscript);
+    div()
+        .flex_none()
+        .h(px(metrics.1))
+        .child(
+            div()
+                .debug_selector(move || {
+                    if style.subscript {
+                        "inline-subscript".into()
+                    } else {
+                        "inline-superscript".into()
+                    }
+                })
+                .relative()
+                .top(px(top))
+                .text_size(px(font_size))
+                .line_height(px(line_height))
+                .child(child),
+        )
+        .into_any_element()
+}
+
+fn rich_inline_fragments(
+    app: &MarkionApp,
+    id: ElementId,
+    rich: &RichText,
+    block_index: usize,
+    run_id: PreviewTextRunId,
+    metrics: (f32, f32),
+    cx: &mut Context<MarkionApp>,
+) -> gpui::AnyElement {
+    let selection = active_preview_run_selection(app, block_index, run_id, &rich.text);
+    let searches = active_preview_search_ranges(app, block_index, run_id, &rich.text);
+    let run_text = SharedString::from(rich.text.clone());
+    let mut lines = vec![Vec::new()];
+    let mut offset = 0;
+    let mut index = 0;
+    for span in &rich.spans {
+        for piece in span.text.split_inclusive('\n') {
+            let content = piece.strip_suffix('\n').unwrap_or(piece);
+            for fragment in content.split_inclusive(char::is_whitespace) {
+                if fragment.is_empty() {
+                    continue;
+                }
+                let range = offset..offset + fragment.len();
+                let style = preview_span_highlight(span)
+                    .map(|style| vec![(0..fragment.len(), style)])
+                    .unwrap_or_default();
+                let child = SelectablePreviewText::new(
+                    ElementId::from(SharedString::from(format!("{id:?}-inline-{index}"))),
+                    StyledText::new(SharedString::from(fragment.to_string()))
+                        .with_highlights(style),
+                    block_index,
+                    run_id,
+                    run_text.clone(),
+                    preview_fragment_selection(selection.as_ref(), range.clone()),
+                    cx.entity(),
+                )
+                .with_search_ranges(preview_fragment_search_ranges(&searches, range.clone()))
+                .with_run_offset(range.start)
+                .with_links(
+                    span.link
+                        .as_ref()
+                        .map_or_else(Vec::new, |_| vec![range.clone()]),
+                    span.link.clone().into_iter().collect(),
+                )
+                .into_any_element();
+                mixed_prose_push(
+                    &mut lines,
+                    script_fragment(child, span.style, metrics, app, cx),
+                );
+                offset = range.end;
+                index += 1;
+            }
+            if piece.ends_with('\n') {
+                mixed_prose_break_line(&mut lines);
+                offset += 1;
+            }
+        }
+    }
+    div()
+        .w_full()
+        .flex()
+        .flex_col()
+        .children(lines.into_iter().enumerate().map(|(line_index, line)| {
+            div()
+                .debug_selector(move || format!("read-inline-line-{block_index}-{line_index}"))
+                .w_full()
+                .min_h(px(metrics.1))
+                .flex()
+                .flex_wrap()
+                .items_end()
+                .children(line)
+        }))
+        .into_any_element()
+}
+
+fn linked_preview_image(child: Div, href: Option<&str>, cx: &mut Context<MarkionApp>) -> Div {
+    if let Some(href) = href.filter(|href| !href.trim().is_empty()) {
+        let target = VisualNavigationTarget::Url(href.to_string());
+        child.cursor(CursorStyle::PointingHand).on_mouse_up(
+            MouseButton::Left,
+            cx.listener(move |app, _: &MouseUpEvent, _, cx| {
+                cx.stop_propagation();
+                app.activate_visual_navigation(&target, cx);
+            }),
+        )
+    } else {
+        child
+    }
+}
+
 fn preview_fragment_selection(
     selection: Option<&Range<usize>>,
     fragment: Range<usize>,
@@ -1725,7 +1884,7 @@ fn preview_fragment_search_ranges(
             let start = range.start.max(fragment.start);
             let end = range.end.min(fragment.end);
             (start <= end && range.start <= fragment.end && range.end >= fragment.start)
-                .then_some((start - fragment.start..end - fragment.start, *current))
+                .then(|| (start - fragment.start..end - fragment.start, *current))
         })
         .collect()
 }
@@ -2002,6 +2161,7 @@ pub(super) fn rich_text_with_math_element(
             rich,
             block_index,
             run_id,
+            (font_size, line_height),
             cx,
         );
     }
@@ -2010,22 +2170,27 @@ pub(super) fn rich_text_with_math_element(
     let full_search_ranges = active_preview_search_ranges(app, block_index, run_id, &rich.text);
     let run_text = SharedString::from(rich.text.clone());
     let inline_metrics = Some((font_size, line_height));
-    let mut children = Vec::new();
+    let mut lines = vec![Vec::new()];
     let mut offset = 0usize;
     let mut fragment_index = 0usize;
     for span in &rich.spans {
         let span_range = offset..offset + span.text.len();
         offset = span_range.end;
         if let Some(image) = &span.image {
-            children.push(
-                preview_inline_image_view(
-                    app,
-                    &image.url,
-                    &image.identity,
-                    &image.alt,
-                    document_dir,
-                    None,
-                    None,
+            mixed_prose_push(
+                &mut lines,
+                linked_preview_image(
+                    preview_inline_image_view(
+                        app,
+                        &image.url,
+                        &image.identity,
+                        &image.alt,
+                        document_dir,
+                        None,
+                        None,
+                    ),
+                    span.link.as_deref(),
+                    cx,
                 )
                 .into_any_element(),
             );
@@ -2041,16 +2206,19 @@ pub(super) fn rich_text_with_math_element(
                 display_scale,
                 app.palette().text,
             ) {
-                MathCacheEntry::Ready(image) => children.push(preview_math_atom(
-                    app,
-                    image,
-                    block_index,
-                    run_id,
-                    span_range,
-                    run_text.clone(),
-                    inline_metrics,
-                    cx,
-                )),
+                MathCacheEntry::Ready(image) => mixed_prose_push(
+                    &mut lines,
+                    preview_math_atom(
+                        app,
+                        image,
+                        block_index,
+                        run_id,
+                        span_range,
+                        run_text.clone(),
+                        inline_metrics,
+                        cx,
+                    ),
+                ),
                 MathCacheEntry::Pending | MathCacheEntry::Error(_) => {
                     let local_len = span.text.len();
                     let mut style = HighlightStyle {
@@ -2075,7 +2243,8 @@ pub(super) fn rich_text_with_math_element(
                         preview_fragment_selection(full_selection.as_ref(), span_range.clone());
                     let search_ranges =
                         preview_fragment_search_ranges(&full_search_ranges, span_range.clone());
-                    children.push(
+                    mixed_prose_push(
+                        &mut lines,
                         SelectablePreviewText::new(
                             ElementId::from(SharedString::from(format!(
                                 "{id_prefix}-{block_index}-{fragment_index}"
@@ -2099,54 +2268,75 @@ pub(super) fn rich_text_with_math_element(
         }
 
         let mut fragment_start = span_range.start;
-        for fragment in span.text.split_inclusive(char::is_whitespace) {
-            if fragment.is_empty() {
-                continue;
+        for piece in span.text.split_inclusive('\n') {
+            let content = piece.strip_suffix('\n').unwrap_or(piece);
+            for fragment in content.split_inclusive(char::is_whitespace) {
+                if fragment.is_empty() {
+                    continue;
+                }
+                let fragment_range = fragment_start..fragment_start + fragment.len();
+                let local_range = 0..fragment.len();
+                let mut highlights = Vec::new();
+                if let Some(style) = preview_span_highlight(span) {
+                    highlights.push((local_range, style));
+                }
+                let links = span
+                    .link
+                    .as_ref()
+                    .map_or_else(Vec::new, |_| vec![fragment_range.clone()]);
+                let urls = span.link.clone().into_iter().collect();
+                let selection =
+                    preview_fragment_selection(full_selection.as_ref(), fragment_range.clone());
+                let search_ranges =
+                    preview_fragment_search_ranges(&full_search_ranges, fragment_range.clone());
+                mixed_prose_push(
+                    &mut lines,
+                    script_fragment(
+                        SelectablePreviewText::new(
+                            ElementId::from(SharedString::from(format!(
+                                "{id_prefix}-{block_index}-{fragment_index}"
+                            ))),
+                            StyledText::new(SharedString::from(fragment.to_string()))
+                                .with_highlights(highlights),
+                            block_index,
+                            run_id,
+                            run_text.clone(),
+                            selection,
+                            cx.entity(),
+                        )
+                        .with_search_ranges(search_ranges)
+                        .with_run_offset(fragment_range.start)
+                        .with_links(links, urls)
+                        .into_any_element(),
+                        span.style,
+                        (font_size, line_height),
+                        app,
+                        cx,
+                    ),
+                );
+                fragment_index += 1;
+                fragment_start = fragment_range.end;
             }
-            let fragment_range = fragment_start..fragment_start + fragment.len();
-            let local_range = 0..fragment.len();
-            let mut highlights = Vec::new();
-            if let Some(style) = preview_span_highlight(span) {
-                highlights.push((local_range, style));
+            if piece.ends_with('\n') {
+                mixed_prose_break_line(&mut lines);
+                fragment_start += 1;
             }
-            let links = span
-                .link
-                .as_ref()
-                .map_or_else(Vec::new, |_| vec![fragment_range.clone()]);
-            let urls = span.link.clone().into_iter().collect();
-            let selection =
-                preview_fragment_selection(full_selection.as_ref(), fragment_range.clone());
-            let search_ranges =
-                preview_fragment_search_ranges(&full_search_ranges, fragment_range.clone());
-            children.push(
-                SelectablePreviewText::new(
-                    ElementId::from(SharedString::from(format!(
-                        "{id_prefix}-{block_index}-{fragment_index}"
-                    ))),
-                    StyledText::new(SharedString::from(fragment.to_string()))
-                        .with_highlights(highlights),
-                    block_index,
-                    run_id,
-                    run_text.clone(),
-                    selection,
-                    cx.entity(),
-                )
-                .with_search_ranges(search_ranges)
-                .with_run_offset(fragment_range.start)
-                .with_links(links, urls)
-                .into_any_element(),
-            );
-            fragment_index += 1;
-            fragment_start = fragment_range.end;
         }
     }
 
     div()
         .w_full()
         .flex()
-        .flex_wrap()
-        .items_end()
-        .children(children)
+        .flex_col()
+        .children(lines.into_iter().map(|line| {
+            div()
+                .w_full()
+                .min_h(px(line_height))
+                .flex()
+                .flex_wrap()
+                .items_end()
+                .children(line)
+        }))
         .into_any_element()
 }
 
@@ -2816,7 +3006,7 @@ fn visual_projection_fragment(
             segments: vec![markion::VisualProjectionSegment {
                 display_range: 0..visible_len,
                 source_range: source_range.clone(),
-                atomic: false,
+                atomic: visible_len != source_range.len(),
             }],
             spans: Vec::new(),
             revealed_source_ranges: Vec::new(),
@@ -2881,7 +3071,27 @@ pub(super) fn visual_text_with_math_element(
         .iter()
         .any(|run| run.html_image.is_some());
     let nav_icons = visual_navigation_icons(block);
-    if !has_math && !has_html_image && nav_icons.is_empty() {
+    // Reveal groups have already proven the tag syntax. Only authored HTML
+    // breaks need explicit empty rows; ordinary prose keeps its shaped flow.
+    let has_html_break = block.reveal_groups.iter().any(|group| {
+        group.kind == markion::VisualRevealKind::InlineHtml
+            && app
+                .active_tab()
+                .document
+                .text()
+                .get(group.source_range.clone())
+                .and_then(|tag| tag.get(..3))
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("<br"))
+    });
+    if !has_math
+        && !has_html_image
+        && !has_html_break
+        && nav_icons.is_empty()
+        && !block
+            .editable_runs
+            .iter()
+            .any(|run| run.style.superscript || run.style.subscript)
+    {
         return visual_text_element(block, block_index, app, cx);
     }
 
@@ -3023,18 +3233,28 @@ pub(super) fn visual_text_with_math_element(
                         };
                         mixed_prose_push(
                             &mut lines,
-                            visual_projection_fragment(
-                                block_index,
-                                fragment_index,
-                                fragment.to_string(),
-                                source_range.clone(),
-                                style.clone(),
+                            script_fragment(
+                                visual_projection_fragment(
+                                    block_index,
+                                    fragment_index,
+                                    fragment.to_string(),
+                                    source_range.clone(),
+                                    style.clone(),
+                                    app,
+                                    cx,
+                                    #[cfg(test)]
+                                    test_projection,
+                                    #[cfg(test)]
+                                    test_projection_styles,
+                                ),
+                                if projected_span.source {
+                                    InlineStyle::default()
+                                } else {
+                                    projected_span.style
+                                },
+                                inline_metrics,
                                 app,
                                 cx,
-                                #[cfg(test)]
-                                test_projection,
-                                #[cfg(test)]
-                                test_projection_styles,
                             ),
                         );
                         fragment_index += 1;
@@ -3071,18 +3291,28 @@ pub(super) fn visual_text_with_math_element(
                     };
                     mixed_prose_push(
                         &mut lines,
-                        visual_projection_fragment(
-                            block_index,
-                            fragment_index,
-                            content.to_string(),
-                            source_range.clone(),
-                            style.clone(),
+                        script_fragment(
+                            visual_projection_fragment(
+                                block_index,
+                                fragment_index,
+                                content.to_string(),
+                                source_range.clone(),
+                                style.clone(),
+                                app,
+                                cx,
+                                #[cfg(test)]
+                                test_projection,
+                                #[cfg(test)]
+                                test_projection_styles,
+                            ),
+                            if projected_span.source {
+                                InlineStyle::default()
+                            } else {
+                                projected_span.style
+                            },
+                            inline_metrics,
                             app,
                             cx,
-                            #[cfg(test)]
-                            test_projection,
-                            #[cfg(test)]
-                            test_projection_styles,
                         ),
                     );
                     fragment_index += 1;
@@ -3111,8 +3341,33 @@ pub(super) fn visual_text_with_math_element(
         );
     }
 
-    while lines.len() > 1 && lines.last().is_some_and(Vec::is_empty) {
-        lines.pop();
+    // Blank list lines have source positions but no glyphs. Mixed prose
+    // (links/math/scripts) still needs a hit target and caret on those rows.
+    if matches!(block.kind, VisualBlockKind::ListItem { .. }) {
+        let mut display_start = 0;
+        for (line_index, text) in projection.text.split('\n').enumerate() {
+            if text.is_empty()
+                && let Some(line) = lines.get_mut(line_index)
+                && line.is_empty()
+            {
+                let anchor = projection.source_for_display(display_start);
+                line.push(visual_projection_fragment(
+                    block_index,
+                    fragment_index,
+                    " ".into(),
+                    anchor..anchor,
+                    None,
+                    app,
+                    cx,
+                    #[cfg(test)]
+                    None,
+                    #[cfg(test)]
+                    None,
+                ));
+                fragment_index += 1;
+            }
+            display_start += text.len() + 1;
+        }
     }
 
     div()
@@ -3122,6 +3377,7 @@ pub(super) fn visual_text_with_math_element(
         .children(lines.into_iter().enumerate().map(|(line_index, line)| {
             div()
                 .w_full()
+                .min_h(px(inline_metrics.1))
                 .flex()
                 .flex_wrap()
                 .items_end()
@@ -4780,6 +5036,70 @@ fn visual_editor_field_element(
         marked.start >= field.source_range.start && marked.end <= field.source_range.end
     });
 
+    if !caret_active
+        && let Some(rich) = cell_rich
+        && (rich.text.contains('\n')
+            || rich
+                .spans
+                .iter()
+                .any(|span| span.style.superscript || span.style.subscript))
+    {
+        let typography = app.typography_metrics();
+        let metrics = (
+            typography.table_font_size,
+            default_text_line_height(typography.table_font_size),
+        );
+        let mut lines = vec![Vec::new()];
+        let mut index = field.source_range.start;
+        for span in &rich.spans {
+            for piece in span.text.split_inclusive('\n') {
+                for fragment in piece
+                    .trim_end_matches('\n')
+                    .split_inclusive(char::is_whitespace)
+                {
+                    if fragment.is_empty() {
+                        continue;
+                    }
+                    let child = visual_projection_fragment(
+                        block_index,
+                        index,
+                        fragment.to_string(),
+                        field.source_range.clone(),
+                        visual_highlight_style(span.style, span.link.is_some()),
+                        app,
+                        cx,
+                        #[cfg(test)]
+                        None,
+                        #[cfg(test)]
+                        None,
+                    );
+                    mixed_prose_push(
+                        &mut lines,
+                        script_fragment(child, span.style, metrics, app, cx),
+                    );
+                    index += 1;
+                }
+                if piece.ends_with('\n') {
+                    mixed_prose_break_line(&mut lines);
+                }
+            }
+        }
+        return div()
+            .w_full()
+            .flex()
+            .flex_col()
+            .children(lines.into_iter().map(|line| {
+                div()
+                    .w_full()
+                    .min_h(px(metrics.1))
+                    .flex()
+                    .flex_wrap()
+                    .items_end()
+                    .children(line)
+            }))
+            .into_any_element();
+    }
+
     // Table cells render inline formatting (bold, links, etc.) while unfocused,
     // and reveal the authored source markup when focused for editing -
     // mirroring how non-table visual blocks reveal inline constructs.
@@ -5946,6 +6266,10 @@ pub(super) fn visual_table_view(
                                     row: row_index,
                                     col: cell_index,
                                 },
+                                (
+                                    typography.table_font_size,
+                                    default_text_line_height(typography.table_font_size),
+                                ),
                                 cx,
                             )
                         })
@@ -6010,6 +6334,7 @@ fn html_preview_block_view(
                         &text,
                         block_index,
                         PreviewTextRunId::HtmlText,
+                        (font_size, line_height),
                         cx,
                     );
                     let aligned = match align {
@@ -6046,6 +6371,7 @@ fn html_preview_block_view(
                 }
                 HtmlPreviewPart::Image {
                     url,
+                    link,
                     centered,
                     width,
                     height,
@@ -6064,13 +6390,10 @@ fn html_preview_block_view(
                             style.flex().justify_center()
                         })
                         .when(align == HtmlAlign::End, |style| style.flex().justify_end())
-                        .child(preview_image_view(
-                            app,
-                            src,
-                            identity,
-                            document_dir,
-                            width,
-                            height,
+                        .child(linked_preview_image(
+                            preview_image_view(app, src, identity, document_dir, width, height),
+                            link.as_deref(),
+                            cx,
                         ))
                 }
                 HtmlPreviewPart::Table { grid } => div().mb_2().child(html_table_grid_view(
@@ -6180,13 +6503,17 @@ fn html_table_grid_view(
                                     .get(i)
                                     .map(|desc| (desc.url.as_ref(), &desc.identity))
                                     .unwrap_or((image.url.as_str(), &ImageSourceIdentity::FromUrl));
-                                preview_image_view(
-                                    app,
-                                    src,
-                                    identity,
-                                    document_dir,
-                                    image.width,
-                                    image.height,
+                                linked_preview_image(
+                                    preview_image_view(
+                                        app,
+                                        src,
+                                        identity,
+                                        document_dir,
+                                        image.width,
+                                        image.height,
+                                    ),
+                                    image.link.as_deref(),
+                                    cx,
                                 )
                             }))
                             .when(!cell.content.is_empty(), |style| {
@@ -6202,6 +6529,10 @@ fn html_table_grid_view(
                                     &cell.content,
                                     block_index,
                                     PreviewTextRunId::HtmlText,
+                                    (
+                                        typography.table_font_size,
+                                        default_text_line_height(typography.table_font_size),
+                                    ),
                                     cx,
                                 ))
                             }),
@@ -6948,6 +7279,10 @@ pub(super) fn preview_block_view(
                                     row: row_index,
                                     col: cell_index,
                                 },
+                                (
+                                    typography.table_font_size,
+                                    default_text_line_height(typography.table_font_size),
+                                ),
                                 cx,
                             ))
                         }))

@@ -1289,6 +1289,8 @@ pub struct InlineImage {
 /// A run of preview text sharing one inline style (and optional link target).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct InlineSpan {
+    /// An authored line break that must survive whitespace normalization.
+    pub hard_break: bool,
     pub text: String,
     pub style: InlineStyle,
     pub link: Option<String>,
@@ -1742,6 +1744,7 @@ impl RichText {
         }
         Self {
             spans: vec![InlineSpan {
+                hard_break: false,
                 text: text.clone(),
                 style: InlineStyle::default(),
                 link: None,

@@ -8,7 +8,7 @@ Markion's Visual Edit mode is WYSIWYG-first: rendering is the default presentati
 |---|---|---|---|---|
 | Paragraphs, headings (including empty ATX headings such as `##` / `###     `), list/task items (including empty items such as `- `) | Rendered direct text with reserved heading/list row height when the payload is empty; mixed-fragment rows (link/footnote icons, math atoms, HTML images) keep authored soft/hard line breaks as stacked wrap rows | Exact inline content and structural prefix ranges | Byte-inexact or crossing parser events | Projection round-trip, formatting, structural Enter/Backspace, pointer (click, drag, double-click word selection with hidden-marker edge exclusion), IME, undo, mixed-layout line stacking, empty-heading/list placeholder height |
 | Mixed blockquote flows (paragraph/list/task leaves) | Ordinary rendered rows inside one quote boundary; no recursive editor | One disjoint leaf range plus exact per-line quote-marker ranges and optional inner list prefix | Overlapping ownership, ambiguous marker partition, or byte-inexact inline events | Intro/list/outro order, complete non-overlapping coverage, independent prefix reveal, quoted structural editing, stable identity |
-| Emphasis, strong, strike, inline code, links (including angle-bracket autolinks), highlight, super/subscript, inline math, backslash-escaped ASCII punctuation, decoded HTML entity references (proven named table, including multi-codepoint names), supported inline HTML (`em`/`i`, `strong`/`b`, `s`/`del`/`strike`, `code`, `mark`, `sub`, `sup`, `br`, ignorable `class`/`id`/`clear`) | Rendered with progressive source reveal; navigation icons and atoms stay on the logical line that owns the construct; escapes hide the backslash byte, entity runs render the decoded character(s) while the complete authored `&…;` token stays hidden until reveal, and HTML tags stay hidden markers whose styles compose with Markdown formatting (`<br>` is an atomic line-break run). Unknown or unpaired inline HTML stays as inert conservative atoms in the same mixed row | Smallest complete proven syntax group (`\X` pair, complete `&…;` entity token, full open-tag…close-tag element, or `<url>` / `<email>` autolink) | Malformed, overlapping, or ambiguous syntax; entity references outside the proven decode tables; escapes or inline HTML outside the byte-proven subset | Reveal-group containment, caret affinity, cross-run selection, UTF-8 input, mixed-layout line stacking, escape gap-splitting, entity decode-table parity with the parser, HTML pairing/demotion, `<br>` atomic boundaries, autolink reveal |
+| Emphasis, strong, strike, inline code, links (including angle-bracket autolinks), highlight, super/subscript, inline math, backslash-escaped ASCII punctuation, decoded HTML entity references (proven named table, including multi-codepoint names), supported inline HTML (`em`/`i`, `strong`/`b`, `s`/`del`/`strike`, `code`/`kbd`/`samp`, `mark`, `sub`, `sup`, `u`/`ins`, `span`/`font` colors, `a` links, `br`, inert metadata and bounded inline styles) | Rendered with progressive source reveal; navigation icons and atoms stay on the logical line that owns the construct; escapes hide the backslash byte, entity runs render the decoded character(s) while the complete authored `&…;` token stays hidden until reveal, and HTML tags stay hidden markers whose styles compose with Markdown formatting (`<br>` is an atomic line-break run). Unknown or unpaired inline HTML stays as inert conservative atoms in the same mixed row | Smallest complete proven syntax group (`\X` pair, complete `&…;` entity token, full open-tag…close-tag element, or `<url>` / `<email>` autolink) | Malformed, overlapping, or ambiguous syntax; entity references outside the proven decode tables; escapes or inline HTML outside the byte-proven subset | Reveal-group containment, caret affinity, cross-run selection, UTF-8 input, mixed-layout line stacking, escape gap-splitting, entity decode-table parity with the parser, HTML pairing/demotion, `<br>` atomic boundaries, autolink reveal |
 | Ordinary fenced code | `VisualBlockEditor::Code`: highlighted payload editor with fences hidden; the language label is hidden while the pointer is outside the fence and the fence does not own the caret, and appears as an explicit click-target chip over the first info-string token (localized placeholder for bare fences) while hovered or caret-owned | Payload only; opening fence, info string, and closing fence are immutable metadata — except the first info token, which is editable through the revealed chip and commits one exact token replacement (inserted after the fence when bare) | Unclosed/ambiguous fence or registered diagram backend | Exact fence/payload/info ranges, memoized highlights, delimiter preservation, edge handoff, language-chip reveal on hover/caret, token sanitization (no whitespace/backticks), bare-fence insertion, IME/history |
 | List item with nested fenced code | The item text renders as a normal editable list row; the nested fence renders below it as the same `VisualBlockEditor::Code` payload editor, exactly once each | The item row owns only its direct text (its source range ends at the nested block start); the code editor owns the complete authored fence including list indentation | Unclosed/ambiguous nested fence (lenient closing scan requires the opening fence indented 4+ and a uniformly indented payload); blockquote/HTML constructs nested in items keep their existing presentation | Document-ordered disjoint block stream, contiguous coverage without unsupported islands, no duplicated text, exact caret positions at the partition boundary, guard against fence-like payload lines |
 | Display/fenced block math | `VisualBlockEditor::Math`: rendered formula plus LaTeX payload editor | LaTeX payload only; delimiters remain authored | Inline-only/ambiguous form | Valid/invalid/pending render, delimiter preservation, CJK/emoji IME geometry, one-action undo |
@@ -25,6 +25,50 @@ Markion's Visual Edit mode is WYSIWYG-first: rendering is the default presentati
 | Other inline HTML | Inert conservative atoms (verbatim tag source) in the mixed prose row; no whole-block island | The authored tag range | N/A (unknown tags stay atoms; YAML front matter is a separate construct) | Mixed-layout focused and unfocused, unpaired tags do not island the paragraph |
 | YAML front matter | Complete source-backed island with lightweight chrome (left accent, faint fill, tight padding — not a padded bordered card) | Complete authored block | Always until the frontmatter gap closes | Exact source preservation |
 | Unsupported or malformed constructs | Transitional source view over the complete containing range, using the same lightweight island chrome | Complete containing source range | Exact mapping cannot be proven | Lossless source-mode round-trip and no guessed mutation |
+
+### Inline HTML and imported TOC regression coverage
+
+`<u>` and `<ins>` now use the existing underline style, including nested Markdown,
+links, headings, list items, blockquotes, and GFM cells. The five Chinese TOC links
+are covered by `inline_html_toc_links_render_and_reveal_exactly`: labels, page
+spacing, anchor destinations, full source reveal, UTF-8 round trips, and cached
+block reuse. `visual_inline_html_underline_reaches_painted_highlights` verifies
+that underline and bold reach the GPUI paint styles.
+
+
+Shared inline semantics now also cover `span`/`font` colors (`#rgb`, `#rrggbb`,
+`rgb(r,g,b)`), `a href` (including images), `kbd`/`samp`, neutral containers,
+and inert metadata. Bounded inline CSS supports color, bold, italic, underline
+and line-through. Text and styles agree across paragraphs, headings, lists,
+quotes, GFM cells, HTML blocks and HTML cells. Each HTML cell resets its state.
+
+Super/subscript use 75% glyph size and a font-metric-based baseline shift in
+Read and Visual Edit, including table cells. Source reveal returns to ordinary
+text geometry. GFM cells retain their existing whole-cell source reveal on
+focus; images in these cells retain the existing alt-text presentation.
+Leading, repeated and trailing `br` tags reserve individual rows of real height.
+
+`src/inline_html_tests.rs` covers semantic/context parity, colors, links and
+linked images, exact reveal, UTF-8, cache identity, literal forms and cell
+isolation. GPUI `inline_html_*` tests cover script bounds, pointer entry, CJK/
+emoji composition, undo and empty-line geometry. Manual fixture:
+[`fixtures/inline-html-parity.md`](fixtures/inline-html-parity.md).
+
+This is a bounded Markdown renderer: class stylesheets, browser DOM/CSS layout,
+JavaScript/event attributes and arbitrary CSS declarations are not interpreted.
+Visual Edit preserves unsupported or malformed inline tag bytes conservatively.
+
+Authored `\*\*` and `\<u>` remain literal text, as do entity-encoded tags and tags
+inside code spans. Matching HTML elements require the same case-insensitive tag
+name: `<em>x</i>` is malformed even though both names imply italic. Unpaired or
+crossing elements retain all tag bytes, including tags already matched before
+the pairing error was discovered.
+
+Remaining limitations: arbitrary inline `<span style=...>` and `<a href=...>`
+wrappers remain inert source atoms; CSS is not interpreted in this inline path.
+Read/Split mixed Markdown prose still flattens inline HTML style tags instead of
+carrying their styles (standalone HTML blocks use the richer shared HTML-parts
+renderer). These are separate coverage gaps from the repaired Visual Edit path.
 
 ## WYSIWYG Coverage Classes
 
@@ -58,6 +102,23 @@ Closed in `keep-empty-structure-visual-and-soften-islands`: empty ATX headings a
 Closed in `improve-visual-edit-html-rendering`: unsupported inline HTML (former gap 6) is mixed inert atoms; angle-bracket autolinks (former gap 8) share link reveal; residual named/multi-codepoint entities (former gap 13) decode through the proven tables.
 
 Reviewed divergences (deliberate, not gaps): bare-URL autolinking remains Preview-only (`src/parse.rs` extended-inline vs Visual Edit `visual_markdown_options`); GFM *pipe*-table cells that contain HTML `<img>` stay flattened to alt/URL text (Read-mode parity). HTML `<td>`/`<th>` images and links render through the HTML-parts table grid. `:emoji:` shortcodes now render on both Preview and unfocused Visual Edit.
+
+### List Enter and blank-row regression coverage
+
+Unquoted list items preserve trailing source line endings as visible rows. An
+Enter continues the list; Enter on an empty item removes its marker while keeping
+the blank row and caret visible. Further Enter presses advance the caret. The
+separator before a following block is counted once, and CRLF maps to one visible
+line break. Mixed content such as links retains a source-backed empty-row caret
+anchor. This does not change source ownership or document-version cache rules.
+
+`list_blank_line_projection_is_source_backed_and_cached` checks newline counts,
+UTF-8/CRLF mapping and cache reuse. GPUI tests
+`visual_list_enter_creates_visible_row_and_moves_caret`,
+`visual_list_pointer_enter_exit_and_typing_keep_visible_caret`, and
+`visual_list_link_tail_blank_row_has_caret` exercise actual caret geometry,
+first/middle/last unordered, ordered and task items, repeated Enter, pointer
+placement, CJK/emoji composition, undo and link-containing rows.
 
 ## Source-Range Invariants
 

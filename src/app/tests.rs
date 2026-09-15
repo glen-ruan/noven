@@ -487,6 +487,34 @@ fn organize_local_images_reports_nothing_to_do_for_in_scope_references(cx: &mut 
 }
 
 #[test]
+fn visual_inline_html_underline_reaches_painted_highlights() {
+    let source = "plain <u>中文 **加粗**</u> tail";
+    let doc = MarkdownDocument::from_text(source);
+    let blocks = doc.visual_blocks_shared();
+    let projection = build_visual_projection_with_marked_range(source, &blocks[0], 0..0, 0, None);
+    assert_eq!(projection.text, "plain 中文 加粗 tail");
+    let highlights = visual_projection_highlights(&projection, None);
+    for needle in ["中文", "加粗"] {
+        let start = projection.text.find(needle).unwrap();
+        let (_, style) = highlights
+            .iter()
+            .find(|(range, _)| range.start <= start && range.end >= start + needle.len())
+            .expect("underlined text must produce a paint highlight");
+        assert!(style.underline.is_some());
+        if needle == "加粗" {
+            assert_eq!(style.font_weight, Some(FontWeight::BOLD));
+        }
+    }
+    let tail = projection.text.find("tail").unwrap();
+    assert!(
+        highlights
+            .iter()
+            .filter(|(range, _)| range.contains(&tail))
+            .all(|(_, style)| style.underline.is_none())
+    );
+}
+
+#[test]
 fn visual_pinyin_preedit_composes_sorted_utf8_highlights() {
     let source = "**激活稀疏（Activation Sparsity）**：经过 ReLU、SiLU 这类激活函数后，一部分激活值变成 0（或接近 0）。这是**动态的**——每个 batch、每个 token 的稀疏位置都不一样，硬件必须在**运行时**现场判断哪里是 0、现场建索引、现场跳过。这一\"现场\"是激活稀疏难做的根源。";
     let mut doc = MarkdownDocument::from_text(source);
@@ -8071,7 +8099,7 @@ fn visual_edit_does_not_duplicate_nested_list_input_in_the_parent(cx: &mut TestA
             .visual_last_projection
             .as_ref()
             .expect("nested child should paint its own projection");
-        assert_eq!(text, "child");
+        assert_eq!(text, "child\n");
     });
 
     cx.simulate_input("X");
@@ -8079,7 +8107,7 @@ fn visual_edit_does_not_duplicate_nested_list_input_in_the_parent(cx: &mut TestA
     app.update(cx, |app, _| {
         assert_eq!(app.active_tab().document.text(), "- parent\n  - chXild\n");
         let (text, _) = app.active_tab().visual_last_projection.as_ref().unwrap();
-        assert_eq!(text, "chXild");
+        assert_eq!(text, "chXild\n");
     });
 
     let parent_cursor = source.find("parent").unwrap() + 1;
@@ -20418,5 +20446,344 @@ fn git_quit_requests_cancellation_and_waits_before_closing(cx: &mut TestAppConte
     app.update(cx, |app, _| {
         assert!(app.git_ui.pending_exit.is_some());
         assert!(!app.allow_close);
+    });
+}
+
+#[test]
+fn inline_html_script_metrics_scale_and_shift_baselines() {
+    for scale in [0.75, 1.0, 1.5, 2.0] {
+        let size = 20.0 * scale;
+        let line = 30.0 * scale;
+        let ascent = 16.0 * scale;
+        let descent = 4.0 * scale;
+        let normal_baseline = 5.0 * scale + ascent;
+        for sub in [false, true] {
+            let (small, small_line, top) =
+                preview::inline_script_metrics(size, line, ascent, descent, sub);
+            assert_eq!(small, size * 0.75);
+            let baseline = top + (small_line - (ascent + descent) * 0.75) / 2.0 + ascent * 0.75;
+            let shift = baseline - normal_baseline;
+            assert!((shift - size * if sub { 0.2 } else { -0.35 }).abs() < 0.001);
+        }
+    }
+}
+
+#[gpui::test]
+fn inline_html_script_geometry_in_read_visual_and_tables(cx: &mut TestAppContext) {
+    for mode in [ViewMode::Read, ViewMode::VisualEdit] {
+        for source in [
+            "plain X<sup>上</sup> H<sub>下</sub> end",
+            "| A | B |\n|---|---|\n| X<sup>上</sup> H<sub>下</sub> | plain |",
+            "<table><tr><td>X<sup>上</sup> H<sub>下</sub></td></tr></table>",
+        ] {
+            let (app, cx) = cx.add_window_view(|_, cx| {
+                let mut app = MarkionApp::new(cx);
+                app.tabs = vec![EditorTab::new(MarkdownDocument::from_text(source))];
+                app.view_mode = mode;
+                let blocks = app.active_tab().document.preview_blocks_shared();
+                let version = app.active_tab().document.version();
+                app.active_tab_mut().preview_reflects_version = Some(version);
+                app.active_tab_mut().sync_preview_list(&blocks);
+                app
+            });
+            cx.simulate_resize(size(px(1100.), px(800.)));
+            cx.run_until_parked();
+            let sup = cx
+                .debug_bounds("inline-superscript")
+                .unwrap_or_else(|| panic!("superscript glyph container: {mode:?}: {source}"));
+            let sub = cx
+                .debug_bounds("inline-subscript")
+                .expect("subscript glyph container");
+            assert!(
+                sup.top() < sub.top(),
+                "{mode:?}: {source}: {sup:?}, {sub:?}"
+            );
+            let metrics = app.update(cx, |app, _| app.typography_metrics());
+            let line = if source.contains("table") || source.starts_with('|') {
+                metrics.table_font_size * 1.5
+            } else {
+                metrics.paragraph_line_height
+            };
+            assert!(
+                f32::from(sup.size.height) < line,
+                "script line must be smaller"
+            );
+            if mode == ViewMode::VisualEdit && !source.starts_with('<') {
+                cx.update(|window, cx| {
+                    window.focus(&app.read(cx).focus_handle);
+                    window.activate_window();
+                });
+                cx.simulate_click(sup.center(), Modifiers::none());
+                cx.run_until_parked();
+                app.update(cx, |app, _| {
+                    assert_eq!(app.active_tab().document.text(), source);
+                    assert!(app.active_tab().visual_caret_bounds.is_some());
+                });
+                let cursor = source.find('上').unwrap();
+                app.update(cx, |app, cx| app.move_to(cursor, cx));
+                cx.run_until_parked();
+                cx.update(|window, cx| {
+                    app.update(cx, |app, cx| {
+                        EntityInputHandler::replace_and_mark_text_in_range(
+                            app,
+                            None,
+                            "中文🙂",
+                            None,
+                            window,
+                            cx,
+                        );
+                    })
+                });
+                cx.run_until_parked();
+                app.update(cx, |app, _| {
+                    assert!(app.active_tab().visual_marked_range_bounds.is_some());
+                    assert_eq!(app.active_tab().undo_stack.len(), 1);
+                });
+                cx.update(|window, cx| {
+                    app.update(cx, |app, cx| {
+                        EntityInputHandler::unmark_text(app, window, cx);
+                    })
+                });
+                app.update(cx, |app, _| {
+                    assert!(app.active_tab_mut().apply_undo());
+                    assert_eq!(app.active_tab().document.text(), source);
+                });
+            }
+        }
+    }
+}
+
+#[gpui::test]
+fn inline_html_empty_break_rows_have_real_height(cx: &mut TestAppContext) {
+    for mode in [ViewMode::Read, ViewMode::VisualEdit] {
+        let source = "<br>AA<br><br>BB<br>";
+        let (app, cx) = cx.add_window_view(|_, cx| {
+            let mut app = MarkionApp::new(cx);
+            app.tabs = vec![EditorTab::new(MarkdownDocument::from_text(source))];
+            app.view_mode = mode;
+            let blocks = app.active_tab().document.preview_blocks_shared();
+            let version = app.active_tab().document.version();
+            app.active_tab_mut().preview_reflects_version = Some(version);
+            app.active_tab_mut().sync_preview_list(&blocks);
+            // Keep the first break rendered rather than revealing its tag.
+            app.active_tab_mut().selected_range = 5..5;
+            app
+        });
+        cx.run_until_parked();
+        let line_height = app.update(cx, |app, _| app.typography_metrics().paragraph_line_height);
+        let prefix = if mode == ViewMode::Read {
+            "read-inline-line"
+        } else {
+            "visual-mixed-line"
+        };
+        let mut bottom = None;
+        for row in 0..5 {
+            let bounds = cx
+                .debug_bounds(test_debug_selector(format!("{prefix}-0-{row}")))
+                .unwrap_or_else(|| panic!("missing break row {row}: {mode:?}"));
+            assert!(f32::from(bounds.size.height) >= line_height - 0.1);
+            if let Some(previous) = bottom {
+                assert!(bounds.top() >= previous);
+            }
+            bottom = Some(bounds.bottom());
+        }
+    }
+}
+
+#[gpui::test]
+fn visual_list_enter_creates_visible_row_and_moves_caret(cx: &mut TestAppContext) {
+    for suffix in ["", "\n", "\n\n\n\n"] {
+        let source =
+            format!("测试如果是列表是否回车能正常换行：\n\n- 第一\n- 第二\n- 第三{suffix}");
+        let cursor = source.find("第三").unwrap() + "第三".len();
+        let (app, cx) = cx.add_window_view(|_, cx| {
+            let mut app = MarkionApp::new(cx);
+            app.tabs = vec![EditorTab::new(MarkdownDocument::from_text(&source))];
+            app.active_tab_mut().selected_range = cursor..cursor;
+            app.active_tab_mut().visual_cursor_reveal_pending = true;
+            app.view_mode = ViewMode::VisualEdit;
+            app.typewriter_mode = false;
+            app
+        });
+        cx.simulate_resize(size(px(1100.), px(800.)));
+        cx.update(|window, cx| {
+            window.focus(&app.read(cx).focus_handle);
+            window.activate_window();
+        });
+        cx.run_until_parked();
+        let before = app.update(cx, |app, _| app.active_tab().visual_caret_bounds.unwrap());
+        cx.dispatch_action(InsertNewline);
+        cx.run_until_parked();
+        app.update(cx, |app, _| {
+            let tab = app.active_tab();
+            assert_eq!(tab.document.text(), format!("{}\n- {}", &source[..cursor], suffix));
+            let blocks = tab.document.visual_blocks_shared();
+            let fresh = MarkdownDocument::from_text(tab.document.text()).visual_blocks();
+            assert_eq!(blocks.len(), fresh.len());
+            let owner = visual_block_index_for_offset(&blocks, tab.cursor_offset(), tab.document.text().len()).unwrap();
+            assert!(matches!(blocks[owner].kind, VisualBlockKind::ListItem {..}), "new caret owner {suffix:?}: {:?}", blocks[owner]);
+            let after = tab.visual_caret_bounds.expect("new painted caret");
+            assert!(after.top() > before.top() + px(5.), "caret did not move down for {suffix:?}: {before:?} -> {after:?}; blocks {blocks:?}; cursor {}", tab.cursor_offset());
+        });
+
+        // A second Enter exits the empty item but must leave a visible blank
+        // paragraph below the list, not snap the caret back into the last item.
+        cx.dispatch_action(InsertNewline);
+        cx.run_until_parked();
+        app.update(cx, |app, _| {
+            let tab = app.active_tab();
+            assert_eq!(tab.document.text(), format!("{}\n{}", &source[..cursor], suffix));
+            let after = tab.visual_caret_bounds.expect("caret after exiting list");
+            assert!(after.top() > before.top() + px(5.), "exiting list lost row for {suffix:?}: {before:?} -> {after:?}; cursor {}; blocks {:?}", tab.cursor_offset(), tab.document.visual_blocks());
+        });
+    }
+}
+
+#[gpui::test]
+fn visual_list_pointer_enter_exit_and_typing_keep_visible_caret(cx: &mut TestAppContext) {
+    for (prefixes, next) in [
+        (["- ", "- ", "- "], ["- ", "- ", "- "]),
+        (["1. ", "2. ", "3. "], ["2. ", "3. ", "4. "]),
+        (["- [x] ", "- [ ] ", "- [ ] "], ["- [ ] "; 3]),
+    ] {
+        for eol in ["\n", "\r\n"] {
+            for item in 0..3 {
+                let labels = ["第一", "第二", "第三"];
+                let source = format!(
+                    "测试列表{eol}{eol}{}第一{eol}{}第二{eol}{}第三{eol}{eol}",
+                    prefixes[0], prefixes[1], prefixes[2]
+                );
+                let cursor = source.find(labels[item]).unwrap() + labels[item].len();
+                let (app, cx) = cx.add_window_view(|_, cx| {
+                    let mut app = MarkionApp::new(cx);
+                    app.tabs = vec![EditorTab::new(MarkdownDocument::from_text(&source))];
+                    app.active_tab_mut().selected_range = cursor..cursor;
+                    app.view_mode = ViewMode::VisualEdit;
+                    app.typewriter_mode = false;
+                    app
+                });
+                cx.simulate_resize(size(px(1100.), px(800.)));
+                cx.update(|window, cx| {
+                    cx.clear_key_bindings();
+                    bind_app_keys(cx, &BTreeMap::new());
+                    window.focus(&app.read(cx).focus_handle);
+                    window.activate_window();
+                });
+                cx.run_until_parked();
+                let before = app.update(cx, |app, _| app.active_tab().visual_caret_bounds.unwrap());
+                cx.simulate_click(
+                    point(before.left() + px(1.), before.center().y),
+                    Modifiers::none(),
+                );
+                cx.run_until_parked();
+                app.update(cx, |app, _| {
+                    assert_eq!(
+                        app.active_tab().cursor_offset(),
+                        cursor,
+                        "pointer {source:?}"
+                    )
+                });
+                cx.simulate_keystrokes("enter");
+                cx.run_until_parked();
+                let continued =
+                    format!("{}\n{}{}", &source[..cursor], next[item], &source[cursor..]);
+                app.update(cx, |app, _| {
+                    let tab = app.active_tab();
+                    assert_eq!(tab.document.text(), continued);
+                    assert!(
+                        tab.visual_caret_bounds.unwrap().top() > before.top() + px(5.),
+                        "continued {source:?}"
+                    );
+                });
+                cx.simulate_keystrokes("enter");
+                cx.run_until_parked();
+                app.update(cx, |app, _| {
+                    assert!(
+                        app.active_tab().visual_caret_bounds.unwrap().top() > before.top() + px(5.),
+                        "exit {source:?}"
+                    );
+                    assert!(app.active_tab_mut().apply_undo());
+                    assert_eq!(app.active_tab().document.text(), continued);
+                });
+                cx.update(|window, cx| {
+                    app.update(cx, |app, cx| {
+                        EntityInputHandler::replace_and_mark_text_in_range(
+                            app,
+                            None,
+                            "新项🙂",
+                            None,
+                            window,
+                            cx,
+                        );
+                    })
+                });
+                cx.run_until_parked();
+                app.update(cx, |app, _| {
+                    assert!(app.active_tab().document.text().contains("新项🙂"));
+                    assert!(app.active_tab().visual_marked_range_bounds.is_some());
+                    assert!(
+                        app.active_tab().visual_caret_bounds.unwrap().top() > before.top() + px(5.)
+                    );
+                });
+                cx.update(|window, cx| {
+                    app.update(cx, |app, cx| {
+                        EntityInputHandler::unmark_text(app, window, cx)
+                    })
+                });
+                app.update(cx, |app, _| {
+                    assert!(app.active_tab_mut().apply_undo());
+                    assert_eq!(app.active_tab().document.text(), continued);
+                });
+
+                cx.simulate_keystrokes("enter");
+                cx.run_until_parked();
+                let mut previous = app.update(cx, |app, _| {
+                    app.active_tab().visual_caret_bounds.unwrap().top()
+                });
+                for _ in 0..3 {
+                    cx.simulate_keystrokes("enter");
+                    cx.run_until_parked();
+                    let current = app.update(cx, |app, _| {
+                        app.active_tab().visual_caret_bounds.unwrap().top()
+                    });
+                    assert!(
+                        current > previous + px(5.),
+                        "repeated Enter after exiting {source:?}: {previous:?} -> {current:?}"
+                    );
+                    previous = current;
+                }
+            }
+        }
+    }
+}
+
+#[gpui::test]
+fn visual_list_link_tail_blank_row_has_caret(cx: &mut TestAppContext) {
+    let source = "- [链接](https://example.com) 第三\n\n";
+    let cursor = source.trim_end().len();
+    let (app, cx) = cx.add_window_view(|_, cx| {
+        let mut app = MarkionApp::new(cx);
+        app.tabs = vec![EditorTab::new(MarkdownDocument::from_text(source))];
+        app.active_tab_mut().selected_range = cursor..cursor;
+        app.view_mode = ViewMode::VisualEdit;
+        app.typewriter_mode = false;
+        app
+    });
+    cx.update(|window, cx| {
+        window.focus(&app.read(cx).focus_handle);
+        window.activate_window();
+    });
+    cx.run_until_parked();
+    let before = app.update(cx, |app, _| app.active_tab().visual_caret_bounds.unwrap());
+    cx.dispatch_action(InsertNewline);
+    cx.dispatch_action(InsertNewline);
+    cx.run_until_parked();
+    app.update(cx, |app, _| {
+        let tab = app.active_tab();
+        assert_eq!(
+            tab.document.text(),
+            "- [链接](https://example.com) 第三\n\n\n"
+        );
+        assert!(tab.visual_caret_bounds.unwrap().top() > before.top() + px(5.));
     });
 }

@@ -1815,6 +1815,7 @@ fn bolded(rich: &RichText) -> RichText {
     if rich.spans.is_empty() {
         if !rich.text.is_empty() {
             rich.spans.push(InlineSpan {
+                hard_break: false,
                 text: rich.text.clone(),
                 style: InlineStyle {
                     bold: true,
@@ -2800,6 +2801,7 @@ mod tests {
         let rich = RichText {
             text: "bold italic".to_string(),
             spans: vec![crate::model::InlineSpan {
+                hard_break: false,
                 text: "bold italic".to_string(),
                 style: InlineStyle {
                     bold: true,
@@ -2824,6 +2826,7 @@ mod tests {
         let rich = RichText {
             text: "label".to_string(),
             spans: vec![crate::model::InlineSpan {
+                hard_break: false,
                 text: "label".to_string(),
                 style: InlineStyle::default(),
                 link: Some(String::new()),

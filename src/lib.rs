@@ -23,6 +23,8 @@ mod frontmatter;
 mod highlight;
 pub mod i18n;
 mod inline_edit;
+#[cfg(test)]
+mod inline_html_tests;
 pub mod keystroke;
 mod math;
 pub mod model;
@@ -3117,6 +3119,7 @@ impl MarkdownDocument {
                     outline_current = Some((level, source_range.start, String::new()));
                 }
                 Event::End(TagEnd::Heading(_)) => {
+                    inline.html.clear();
                     if let Some((level, spans, heading_range)) = heading.take() {
                         push_nonempty_block(
                             &mut blocks,
@@ -3149,6 +3152,7 @@ impl MarkdownDocument {
                     }
                 }
                 Event::Start(Tag::Paragraph) => {
+                    inline.html.clear();
                     paragraph = Some((Vec::new(), source_range));
                 }
                 Event::End(TagEnd::Paragraph) => {
@@ -3274,6 +3278,7 @@ impl MarkdownDocument {
                     });
                 }
                 Event::End(TagEnd::Item) => {
+                    inline.html.clear();
                     if let Some(item) = list_item.as_mut() {
                         item.source_range = source_range;
                     }
@@ -3319,6 +3324,8 @@ impl MarkdownDocument {
                             &mut list_item,
                             &mut table,
                             image,
+                            inline.style(),
+                            inline.link(),
                         ) {
                             blocks.push(PreviewBlock::Image {
                                 alt: clean_preview_text(&image.alt),
@@ -3434,6 +3441,7 @@ impl MarkdownDocument {
                     }
                 }
                 Event::End(TagEnd::TableCell) => {
+                    inline.html.clear();
                     if let Some(table) = table.as_mut()
                         && let Some(row) = table.current_row.as_mut()
                     {
@@ -3527,6 +3535,50 @@ impl MarkdownDocument {
                     }
                 }
                 Event::InlineHtml(html) => {
+                    if inline.html.handle(&html) {
+                        continue;
+                    }
+                    if let Some(html_image) = parse::parse_inline_html_image(&html) {
+                        let draft = ImageDraft {
+                            alt: html_image.alt,
+                            title: html_image.title,
+                            identity: ImageSourceIdentity::for_url(&html_image.url),
+                            url: html_image.url,
+                            source_range,
+                        };
+                        let _ = append_preview_image(
+                            &mut heading,
+                            &mut paragraph,
+                            &mut quote,
+                            quote_depth,
+                            &mut list_item,
+                            &mut table,
+                            draft,
+                            inline.style(),
+                            inline.link(),
+                        );
+                        continue;
+                    }
+                    if matches!(
+                        parse::parse_inline_html_style_tag(&html),
+                        Some(parse::InlineHtmlStyleTag::LineBreak)
+                    ) {
+                        push_preview_rich(
+                            &mut heading,
+                            &mut paragraph,
+                            &mut quote,
+                            quote_depth,
+                            &mut list_item,
+                            &mut image,
+                            &mut code,
+                            &mut table,
+                            "\n",
+                            inline.style(),
+                            inline.link(),
+                            false,
+                        );
+                        continue;
+                    }
                     let standalone_html = heading.is_none()
                         && paragraph.is_none()
                         && quote_depth == 0
@@ -4366,6 +4418,7 @@ fn html_only_paragraph_source(source: &str) -> bool {
     let mut index = 0;
     let mut depth = 0usize;
     let mut saw_tag = false;
+    let mut needs_block_renderer = false;
 
     while index < source.len() {
         if source[index..].starts_with('<') {
@@ -4377,6 +4430,7 @@ fn html_only_paragraph_source(source: &str) -> bool {
                 return false;
             };
             saw_tag = true;
+            needs_block_renderer |= parse::parse_inline_html_style_tag(tag).is_none();
             if parsed.closing {
                 depth = depth.saturating_sub(1);
             } else if !parsed.self_closing {
@@ -4395,7 +4449,7 @@ fn html_only_paragraph_source(source: &str) -> bool {
         index = next_tag;
     }
 
-    saw_tag
+    saw_tag && needs_block_renderer
 }
 
 fn html_tag_end(source: &str, start: usize) -> Option<usize> {
@@ -5725,10 +5779,12 @@ mod tests {
                 text: "Paragraph with bold text.".into(),
                 spans: vec![
                     InlineSpan {
+                        hard_break: false,
                         text: "Paragraph with ".into(),
                         ..InlineSpan::default()
                     },
                     InlineSpan {
+                        hard_break: false,
                         text: "bold".into(),
                         style: InlineStyle {
                             bold: true,
@@ -5739,6 +5795,7 @@ mod tests {
                         image: None,
                     },
                     InlineSpan {
+                        hard_break: false,
                         text: " text.".into(),
                         ..InlineSpan::default()
                     },
