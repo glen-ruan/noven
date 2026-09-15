@@ -1923,6 +1923,7 @@ pub enum MarkdownFormat {
     InlineCode,
     Link,
     Image,
+    Paragraph,
     Heading(u8),
     UnorderedList,
     OrderedList,

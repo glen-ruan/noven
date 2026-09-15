@@ -1337,6 +1337,14 @@ impl MarkionApp {
         );
     }
 
+    pub(super) fn paragraph(&mut self, _: &Paragraph, _: &mut Window, cx: &mut Context<Self>) {
+        self.apply_markdown_format(
+            MarkdownFormat::Paragraph,
+            self.tr(Msg::StatusFmtParagraph).into(),
+            cx,
+        );
+    }
+
     pub(super) fn heading1(&mut self, _: &Heading1, _: &mut Window, cx: &mut Context<Self>) {
         self.apply_heading_level(1, cx);
     }

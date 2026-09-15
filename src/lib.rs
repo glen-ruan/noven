@@ -1826,6 +1826,7 @@ impl MarkdownDocument {
             MarkdownFormat::InlineCode => self.wrap_inline(range, "`", "`", "code"),
             MarkdownFormat::Link => self.wrap_link(range, false),
             MarkdownFormat::Image => self.wrap_link(range, true),
+            MarkdownFormat::Paragraph => self.apply_paragraph(range),
             MarkdownFormat::Heading(level) => self.apply_heading(range, level.clamp(1, 6)),
             MarkdownFormat::UnorderedList => self.prefix_lines(range, |_, _| "- ".to_string()),
             MarkdownFormat::OrderedList => {
@@ -2121,6 +2122,41 @@ impl MarkdownDocument {
                 );
                 delta += prefix.len() as isize;
             }
+        }
+
+        self.apply_transformed_text(MutationOrigin::MarkdownFormat, transformed);
+        let start = offset_with_delta(range.start, start_delta);
+        let end = offset_with_delta(range.end, end_delta).max(start);
+        start..end
+    }
+
+    fn apply_paragraph(&mut self, range: std::ops::Range<usize>) -> std::ops::Range<usize> {
+        let line_starts = selected_line_starts(&self.text, range.clone());
+        let mut transformed = self.text.clone();
+        let mut delta: isize = 0;
+        let mut start_delta: isize = 0;
+        let mut end_delta: isize = 0;
+
+        for line_start in line_starts {
+            let adjusted_line_start = (line_start as isize + delta) as usize;
+            let marker_len = heading_marker_len_at(&transformed, adjusted_line_start);
+            if marker_len == 0 {
+                continue;
+            }
+            transformed.replace_range(adjusted_line_start..adjusted_line_start + marker_len, "");
+            adjust_offset_for_line_marker_removal(
+                range.start,
+                line_start,
+                marker_len,
+                &mut start_delta,
+            );
+            adjust_offset_for_line_marker_removal(
+                range.end,
+                line_start,
+                marker_len,
+                &mut end_delta,
+            );
+            delta -= marker_len as isize;
         }
 
         self.apply_transformed_text(MutationOrigin::MarkdownFormat, transformed);
@@ -6802,6 +6838,69 @@ mod tests {
         let range = doc.apply_markdown_format(range, MarkdownFormat::Heading(2));
         assert_eq!(doc.text(), "Title\nBody");
         assert_eq!(range, 0..5);
+    }
+
+    #[test]
+    fn markdown_format_paragraph_removes_atx_headings_and_preserves_content_ranges() {
+        for level in 1..=6 {
+            let prefix = format!("{} ", "#".repeat(level));
+            let source = format!("{prefix}标题 Title\nBody");
+            let content_start = prefix.len();
+            let content_end = content_start + "标题 Title".len();
+            let mut doc = MarkdownDocument::from_text(&source);
+
+            let range =
+                doc.apply_markdown_format(content_start..content_end, MarkdownFormat::Paragraph);
+
+            assert_eq!(doc.text(), "标题 Title\nBody", "H{level} conversion");
+            assert_eq!(&doc.text()[range], "标题 Title", "H{level} selection");
+        }
+
+        let mut caret = MarkdownDocument::from_text("### Heading\nBody");
+        let range = caret.apply_markdown_format(7..7, MarkdownFormat::Paragraph);
+        assert_eq!(caret.text(), "Heading\nBody");
+        assert_eq!(range, 3..3);
+    }
+
+    #[test]
+    fn markdown_format_paragraph_only_changes_intersected_atx_heading_lines() {
+        let source = "# One\nordinary\n### 标题\n####### not a heading\n##no separator\n    # code";
+        let mut doc = MarkdownDocument::from_text(source);
+        let selected_start = source.find("One").unwrap();
+        let selected_end = source.find("code").unwrap() + "code".len();
+
+        let range =
+            doc.apply_markdown_format(selected_start..selected_end, MarkdownFormat::Paragraph);
+
+        assert_eq!(
+            doc.text(),
+            "One\nordinary\n标题\n####### not a heading\n##no separator\n    # code"
+        );
+        assert_eq!(
+            &doc.text()[range],
+            "One\nordinary\n标题\n####### not a heading\n##no separator\n    # code"
+        );
+    }
+
+    #[test]
+    fn markdown_format_paragraph_noop_preserves_version_dirty_state_and_derived_caches() {
+        let mut doc = MarkdownDocument::from_text("ordinary paragraph");
+        let preview = doc.preview_blocks_shared();
+        let visual = doc.visual_blocks_shared();
+        let version = doc.version();
+        assert!(!doc.is_dirty());
+
+        let range = doc.apply_markdown_format(5..5, MarkdownFormat::Paragraph);
+
+        assert_eq!(range, 5..5);
+        assert_eq!(doc.text(), "ordinary paragraph");
+        assert_eq!(doc.version(), version);
+        assert!(!doc.is_dirty());
+        assert!(std::sync::Arc::ptr_eq(
+            &preview,
+            &doc.preview_blocks_shared()
+        ));
+        assert!(std::sync::Arc::ptr_eq(&visual, &doc.visual_blocks_shared()));
     }
 
     #[test]

@@ -575,11 +575,11 @@ fn menu_shortcut_labels_follow_platform_conventions() {
         "Cmd+O"
     );
     assert_eq!(
-        menu_shortcuts::SET_EDIT_MODE.label(ShortcutPlatform::WindowsLinux),
+        menu_shortcuts::SOURCE_SPLIT_MODE.label(ShortcutPlatform::WindowsLinux),
         "Ctrl+/"
     );
     assert_eq!(
-        menu_shortcuts::SET_EDIT_MODE.label(ShortcutPlatform::MacOS),
+        menu_shortcuts::SOURCE_SPLIT_MODE.label(ShortcutPlatform::MacOS),
         "Cmd+/"
     );
     assert_eq!(
@@ -808,6 +808,80 @@ fn structural_format_shortcuts_are_localized_in_every_catalog_variant() {
 }
 
 #[test]
+fn source_split_shortcut_is_localized_as_one_view_catalog_row() {
+    for language in Language::all() {
+        let catalog = shortcut_catalog(*language, EXTENDED_HEADING_MENU_MAX_LEVEL);
+        let view = catalog
+            .section(ShortcutCategory::View)
+            .expect("View shortcut category");
+        let source_split = view
+            .actions
+            .iter()
+            .find(|action| action.ids() == ["set-edit-mode"])
+            .unwrap_or_else(|| panic!("missing Source/Split Preview for {language:?}"));
+
+        assert_eq!(
+            source_split.label,
+            t(*language, Msg::ItemSourceSplitPreview)
+        );
+        assert_eq!(
+            source_split.combinations(ShortcutPlatform::WindowsLinux),
+            ["Ctrl+/"]
+        );
+        assert_eq!(
+            source_split.combinations(ShortcutPlatform::MacOS),
+            ["Cmd+/"]
+        );
+        assert!(
+            view.actions
+                .iter()
+                .all(|action| !action.ids().contains(&"set-split-preview-mode")),
+            "obsolete Split Preview row remained for {language:?}"
+        );
+    }
+}
+
+#[test]
+fn paragraph_shortcut_is_localized_in_every_catalog_variant() {
+    for language in [
+        Language::En,
+        Language::Ja,
+        Language::Fr,
+        Language::De,
+        Language::Es,
+        Language::ZhHans,
+        Language::ZhHant,
+    ] {
+        for heading_depth in [
+            DEFAULT_HEADING_MENU_MAX_LEVEL,
+            EXTENDED_HEADING_MENU_MAX_LEVEL,
+        ] {
+            let catalog = shortcut_catalog(language, heading_depth);
+            let editing = catalog
+                .section(ShortcutCategory::Editing)
+                .expect("Editing shortcut category");
+            let action = editing
+                .actions
+                .iter()
+                .find(|action| action.ids().contains(&"paragraph"))
+                .unwrap_or_else(|| {
+                    panic!("missing paragraph for {language:?} at H{heading_depth}")
+                });
+            assert!(action.label.contains(t(language, Msg::ItemParagraph)));
+            assert_eq!(action.ids().first(), Some(&"paragraph"));
+            assert_eq!(
+                action.combinations(ShortcutPlatform::WindowsLinux).first(),
+                Some(&"Ctrl+0")
+            );
+            assert_eq!(
+                action.combinations(ShortcutPlatform::MacOS).first(),
+                Some(&"Cmd+0")
+            );
+        }
+    }
+}
+
+#[test]
 fn shortcut_effective_binding_and_label_fall_back_to_defaults() {
     let mut overrides = BTreeMap::new();
     overrides.insert("bold".to_string(), "ctrl-alt-b".to_string());
@@ -1005,6 +1079,7 @@ fn application_menu_shortcuts_distinguish_bound_and_unbound_actions() {
         ("Msg::ItemRedo,", "menu_shortcuts::REDO"),
         ("Msg::ItemFind,", "menu_shortcuts::SHOW_FIND"),
         ("Msg::ItemBold,", "menu_shortcuts::BOLD"),
+        ("Msg::ItemParagraph,", "menu_shortcuts::PARAGRAPH"),
         ("Msg::ItemBullets,", "menu_shortcuts::UNORDERED_LIST"),
         ("Msg::ItemNumbers,", "menu_shortcuts::ORDERED_LIST"),
         ("Msg::ItemTask,", "menu_shortcuts::TASK_LIST"),
@@ -1042,6 +1117,49 @@ fn application_menu_shortcuts_distinguish_bound_and_unbound_actions() {
 }
 
 #[test]
+fn source_split_view_menu_uses_one_combined_action_on_both_surfaces() {
+    let root_view = include_str!("root_view.rs").replace("\r\n", "\n");
+    let in_window_view = root_view
+        .split_once("AppMenu::View => panel")
+        .and_then(|(_, rest)| rest.split_once("AppMenu::Format =>").map(|(view, _)| view))
+        .expect("in-window View menu");
+
+    let bootstrap = include_str!("bootstrap.rs").replace("\r\n", "\n");
+    let native_view = bootstrap
+        .split_once("name: t(language, Msg::MenuView).into()")
+        .and_then(|(_, rest)| {
+            rest.split_once("name: t(language, Msg::MenuFormat).into()")
+                .map(|(view, _)| view)
+        })
+        .expect("native View menu");
+    let bindings = bootstrap
+        .split_once("pub(super) fn bind_app_keys")
+        .and_then(|(_, rest)| rest.split_once("pub(super) fn run()").map(|(body, _)| body))
+        .expect("application keymap");
+
+    for (surface, menu) in [("in-window", in_window_view), ("native", native_view)] {
+        assert_eq!(
+            menu.matches("Msg::ItemSourceSplitPreview").count(),
+            1,
+            "{surface} View menu must contain exactly one combined row"
+        );
+        assert!(menu.contains("ToggleSourceSplitMode"));
+        assert!(menu.contains("Msg::ItemVisualEditMode"));
+        assert!(menu.contains("Msg::ItemReadMode"));
+        assert!(menu.contains("Msg::ItemToggleView"));
+        assert!(!menu.contains("Msg::ItemEditMode"));
+        assert!(!menu.contains("Msg::ItemSplitPreviewMode"));
+        assert!(!menu.contains("SetEditMode"));
+        assert!(!menu.contains("SetSplitPreviewMode"));
+    }
+
+    assert!(in_window_view.contains("menu_shortcuts::SOURCE_SPLIT_MODE"));
+    assert!(bindings.contains("eff(&menu_shortcuts::SOURCE_SPLIT_MODE)"));
+    assert!(bindings.contains("ToggleSourceSplitMode"));
+    assert!(!bindings.contains("SET_SPLIT_PREVIEW_MODE"));
+}
+
+#[test]
 fn native_structural_format_menu_actions_share_the_bound_handlers() {
     let bootstrap = include_str!("bootstrap.rs").replace("\r\n", "\n");
     let format_menu = bootstrap
@@ -1057,6 +1175,7 @@ fn native_structural_format_menu_actions_share_the_bound_handlers() {
         .expect("complete application keymap");
 
     for (message, action, descriptor) in [
+        ("Msg::ItemParagraph", "Paragraph", "PARAGRAPH"),
         ("Msg::ItemBullets", "UnorderedList", "UNORDERED_LIST"),
         ("Msg::ItemNumbers", "OrderedList", "ORDERED_LIST"),
         ("Msg::ItemTask", "TaskList", "TASK_LIST"),
@@ -1151,7 +1270,7 @@ fn backup_sync_actions_are_grouped_while_file_history_stays_contextual() {
         })
         .expect("native File menu");
     let native_repository = bootstrap
-        .split_once("name: git_t(language, GitMsg::BackupAndSync)")
+        .split_once("name: git_t(language, GitMsg::SyncMenu)")
         .and_then(|(_, rest)| {
             rest.split_once("name: t(language, Msg::MenuHelp)")
                 .map(|(repo, _)| repo)
@@ -1181,6 +1300,8 @@ fn backup_sync_actions_are_grouped_while_file_history_stays_contextual() {
         );
     }
     assert!(in_window_repository.contains("GitMsg::BackupAndSync"));
+    assert!(root_view.contains("self.git_label(GitMsg::SyncMenu)"));
+    assert!(!root_view.contains("self.git_label(GitMsg::BackupAndSync)"));
     assert!(native_repository.contains("GitMsg::ViewStatus"));
     assert!(in_window_repository.contains("GitMsg::AdvancedGitTools"));
     assert!(native_repository.contains("GitMsg::AdvancedGitTools"));
@@ -1205,8 +1326,8 @@ fn backup_sync_actions_are_grouped_while_file_history_stays_contextual() {
         .find("Msg::MenuExport")
         .expect("native Export menu");
     let native_repository = bootstrap
-        .find("GitMsg::BackupAndSync")
-        .expect("native Backup and Sync menu");
+        .find("GitMsg::SyncMenu")
+        .expect("native Sync menu");
     let native_help = bootstrap.find("Msg::MenuHelp").expect("native Help menu");
     assert!(native_export < native_repository && native_repository < native_help);
 }
@@ -1222,6 +1343,17 @@ fn conditional_heading_menu_wires_only_visible_heading_shortcuts() {
         })
         .expect("Format menu arm");
 
+    let paragraph = format_menu
+        .find("menu_shortcuts::PARAGRAPH")
+        .expect("Paragraph shortcut descriptor");
+    let h1 = format_menu
+        .find("menu_shortcuts::HEADING_1")
+        .expect("H1 shortcut descriptor");
+    assert!(
+        paragraph < h1,
+        "Paragraph must appear immediately before headings"
+    );
+
     for level in 1..=5 {
         assert!(
             format_menu.contains(&format!("menu_shortcuts::HEADING_{level}")),
@@ -1235,6 +1367,20 @@ fn conditional_heading_menu_wires_only_visible_heading_shortcuts() {
         .find("menu_shortcuts::HEADING_6")
         .expect("H6 shortcut descriptor");
     assert!(h6_condition < h6_shortcut);
+
+    let native = include_str!("bootstrap.rs");
+    let native_format = native
+        .split_once("name: t(language, Msg::MenuFormat).into()")
+        .and_then(|(_, rest)| {
+            rest.split_once("name: t(language, Msg::MenuExport).into()")
+                .map(|(format, _)| format)
+        })
+        .expect("native Format menu");
+    assert!(
+        native_format.find("Msg::ItemParagraph").unwrap()
+            < native_format.find("heading_native_menu_items").unwrap(),
+        "native Paragraph must appear before the heading items"
+    );
 }
 
 #[test]
@@ -1409,7 +1555,7 @@ fn startup_application_flow_reuses_existing_open_behaviour() {
 #[test]
 fn backup_sync_center_is_transient_responsive_and_keyboard_operable() {
     let root = include_str!("root_view.rs");
-    let panel = include_str!("git_panel.rs");
+    let panel = include_str!("git_panel.rs").replace("\r\n", "\n");
 
     assert!(root.contains("self.git_ui.center_open"));
     assert!(root.contains("git_panel::center_view(self, cx)"));
@@ -3274,7 +3420,7 @@ fn shortcut_catalog_lists_core_workflows() {
     ));
     assert!(has_action(
         ShortcutCategory::View,
-        "Source Mode",
+        "Source/Split Preview",
         "Ctrl+/",
         "Cmd+/"
     ));
@@ -4590,6 +4736,105 @@ fn structural_format_shortcuts_dispatch_and_live_rebind(cx: &mut TestAppContext)
     });
 }
 
+#[gpui::test]
+fn paragraph_action_reports_success_and_noop_without_extra_undo(cx: &mut TestAppContext) {
+    let (app, cx) = cx.add_window_view(|_, cx| {
+        let mut app = MarkionApp::new(cx);
+        app.tabs = vec![EditorTab::new(MarkdownDocument::from_text("## Heading"))];
+        app.active_tab_mut().selected_range = 5..5;
+        app
+    });
+    cx.update(|window, cx| {
+        window.focus(&app.read(cx).focus_handle);
+        window.activate_window();
+    });
+
+    cx.dispatch_action(Paragraph);
+    app.update(cx, |app, _| {
+        assert_eq!(app.active_tab().document.text(), "Heading");
+        assert_eq!(app.active_tab().selected_range, 2..2);
+        assert_eq!(app.status, t(app.language, Msg::StatusFmtParagraph));
+        assert_eq!(app.active_tab().undo_stack.len(), 1);
+    });
+
+    let (version, undo_len, preview, visual) = app.update(cx, |app, _| {
+        (
+            app.active_tab().document.version(),
+            app.active_tab().undo_stack.len(),
+            app.active_tab().document.preview_blocks_shared(),
+            app.active_tab().document.visual_blocks_shared(),
+        )
+    });
+    cx.dispatch_action(Paragraph);
+    app.update(cx, |app, _| {
+        assert_eq!(app.active_tab().document.text(), "Heading");
+        assert_eq!(app.active_tab().document.version(), version);
+        assert_eq!(app.active_tab().undo_stack.len(), undo_len);
+        assert!(Arc::ptr_eq(
+            &preview,
+            &app.active_tab().document.preview_blocks_shared()
+        ));
+        assert!(Arc::ptr_eq(
+            &visual,
+            &app.active_tab().document.visual_blocks_shared()
+        ));
+        assert_eq!(app.status, t(app.language, Msg::StatusNoFormattingChange));
+    });
+}
+
+#[gpui::test]
+fn paragraph_shortcut_dispatches_and_live_rebinds(cx: &mut TestAppContext) {
+    let (app, cx) = cx.add_window_view(|_, cx| MarkionApp::new(cx));
+    cx.update(|window, cx| {
+        cx.clear_key_bindings();
+        bind_app_keys(cx, &BTreeMap::new());
+        window.focus(&app.read(cx).focus_handle);
+        window.activate_window();
+    });
+
+    app.update(cx, |app, _| {
+        app.tabs = vec![EditorTab::new(MarkdownDocument::from_text("# Default"))];
+        app.active_tab_mut().selected_range = 4..4;
+    });
+    cx.simulate_keystrokes(menu_shortcuts::PARAGRAPH.binding.expect("bound"));
+    app.update(cx, |app, _| {
+        assert_eq!(app.active_tab().document.text(), "Default");
+    });
+
+    let mut overrides = BTreeMap::new();
+    overrides.insert("paragraph".to_string(), "ctrl-alt-0".to_string());
+    app.update(cx, |app, _| {
+        app.shortcut_overrides = overrides.clone();
+        app.tabs = vec![EditorTab::new(MarkdownDocument::from_text("## Override"))];
+        app.active_tab_mut().selected_range = 5..5;
+    });
+    cx.update(|_, cx| {
+        cx.clear_key_bindings();
+        bind_app_keys(cx, &overrides);
+    });
+
+    cx.simulate_keystrokes(menu_shortcuts::PARAGRAPH.binding.expect("bound"));
+    app.update(cx, |app, _| {
+        assert_eq!(app.active_tab().document.text(), "## Override");
+    });
+    cx.simulate_keystrokes("ctrl-alt-0");
+    app.update(cx, |app, _| {
+        assert_eq!(app.active_tab().document.text(), "Override");
+        app.tabs = vec![EditorTab::new(MarkdownDocument::from_text("### Reset"))];
+        app.active_tab_mut().selected_range = 6..6;
+        app.shortcut_overrides.clear();
+    });
+    cx.update(|_, cx| {
+        cx.clear_key_bindings();
+        bind_app_keys(cx, &BTreeMap::new());
+    });
+
+    cx.simulate_keystrokes(menu_shortcuts::PARAGRAPH.binding.expect("bound"));
+    app.update(cx, |app, _| {
+        assert_eq!(app.active_tab().document.text(), "Reset");
+    });
+}
+
 #[test]
 fn show_shortcuts_opens_preferences_on_shortcuts_tab() {
     assert_eq!(
@@ -4648,18 +4893,11 @@ fn show_shortcuts_opens_preferences_on_shortcuts_tab() {
 fn updated_default_shortcuts_and_markdown_reference_are_registered() {
     let expected = [
         (
-            &menu_shortcuts::SET_EDIT_MODE,
+            &menu_shortcuts::SOURCE_SPLIT_MODE,
             "set-edit-mode",
             "secondary-/",
             "Ctrl+/",
             "Cmd+/",
-        ),
-        (
-            &menu_shortcuts::SET_SPLIT_PREVIEW_MODE,
-            "set-split-preview-mode",
-            "secondary-p",
-            "Ctrl+P",
-            "Cmd+P",
         ),
         (
             &menu_shortcuts::NEW_TAB,
@@ -4690,6 +4928,13 @@ fn updated_default_shortcuts_and_markdown_reference_are_registered() {
             "Cmd+Shift+`",
         ),
         (
+            &menu_shortcuts::PARAGRAPH,
+            "paragraph",
+            "secondary-0",
+            "Ctrl+0",
+            "Cmd+0",
+        ),
+        (
             &menu_shortcuts::OPEN_FOLDER,
             "open-folder",
             "secondary-shift-o",
@@ -4717,6 +4962,26 @@ fn updated_default_shortcuts_and_markdown_reference_are_registered() {
         stored.insert(id.to_string(), binding.to_string());
     }
     assert_eq!(sanitized_shortcut_overrides(&stored), stored);
+    assert!(shortcut_by_id("set-split-preview-mode").is_none());
+    assert!(
+        menu_shortcuts::ALL
+            .iter()
+            .all(|shortcut| shortcut.binding != Some("secondary-p"))
+    );
+
+    let mut legacy_overrides = BTreeMap::new();
+    legacy_overrides.insert("set-edit-mode".to_string(), "ctrl-alt-v".to_string());
+    legacy_overrides.insert(
+        "set-split-preview-mode".to_string(),
+        "ctrl-alt-p".to_string(),
+    );
+    let sanitized = sanitized_shortcut_overrides(&legacy_overrides);
+    assert_eq!(
+        sanitized.get("set-edit-mode").map(String::as_str),
+        Some("ctrl-alt-v"),
+        "existing Source overrides must transfer to the combined action"
+    );
+    assert!(!sanitized.contains_key("set-split-preview-mode"));
     assert_eq!(menu_shortcuts::SHOW_SHORTCUTS.binding, None);
     assert_eq!(
         menu_shortcuts::SHOW_SHORTCUTS.effective_binding(&BTreeMap::new()),
@@ -4792,14 +5057,10 @@ fn updated_view_and_tab_default_shortcuts_dispatch(cx: &mut TestAppContext) {
         window.activate_window();
     });
 
-    cx.simulate_keystrokes(menu_shortcuts::SET_EDIT_MODE.binding.expect("bound"));
+    cx.simulate_keystrokes(menu_shortcuts::SOURCE_SPLIT_MODE.binding.expect("bound"));
     app.update(cx, |app, _| assert_eq!(app.view_mode, ViewMode::Edit));
 
-    cx.simulate_keystrokes(
-        menu_shortcuts::SET_SPLIT_PREVIEW_MODE
-            .binding
-            .expect("bound"),
-    );
+    cx.simulate_keystrokes(menu_shortcuts::SOURCE_SPLIT_MODE.binding.expect("bound"));
     app.update(cx, |app, _| assert_eq!(app.view_mode, ViewMode::Split));
 
     cx.simulate_keystrokes(menu_shortcuts::SET_READ_MODE.binding.expect("bound"));
@@ -4819,6 +5080,124 @@ fn updated_view_and_tab_default_shortcuts_dispatch(cx: &mut TestAppContext) {
     );
     cx.run_until_parked();
     app.update(cx, |app, _| assert!(app.markdown_reference_open));
+}
+
+#[gpui::test]
+fn source_split_action_transitions_all_modes_and_preserves_tab_state(cx: &mut TestAppContext) {
+    let (app, cx) = cx.add_window_view(|_, cx| {
+        let source = (0..200)
+            .map(|index| format!("paragraph {index}\n\n"))
+            .collect::<String>();
+        let document = MarkdownDocument::recovered(source, None);
+        let mut tab = EditorTab::new(document);
+        tab.selected_range = 1..4;
+        tab.push_undo_snapshot();
+        tab.editor_scroll.set_offset(point(px(0.), px(-120.)));
+        let preview = tab.document.preview_blocks_shared();
+        tab.sync_preview_list(&preview);
+        tab.preview_list.scroll_to(gpui::ListOffset {
+            item_ix: 20,
+            offset_in_item: px(4.),
+        });
+
+        let mut app = MarkionApp::new(cx);
+        app.tabs = vec![tab];
+        app
+    });
+    cx.update(|window, cx| {
+        window.focus(&app.read(cx).focus_handle);
+        window.activate_window();
+    });
+
+    let (
+        instance_id,
+        version,
+        dirty,
+        text,
+        selection,
+        undo_len,
+        redo_len,
+        editor_scroll,
+        preview_scroll,
+        preview_cache,
+        visual_cache,
+    ) = app.update(cx, |app, _| {
+        let tab = app.active_tab();
+        (
+            tab.document.instance_id(),
+            tab.document.version(),
+            tab.document.is_dirty(),
+            tab.document.text().to_string(),
+            tab.selected_range.clone(),
+            tab.undo_stack.len(),
+            tab.redo_stack.len(),
+            tab.editor_scroll.offset(),
+            tab.preview_list.logical_scroll_top(),
+            tab.document.preview_blocks_shared(),
+            tab.document.visual_blocks_shared(),
+        )
+    });
+
+    for (start, expected) in [
+        (ViewMode::Edit, ViewMode::Split),
+        (ViewMode::Split, ViewMode::Edit),
+        (ViewMode::VisualEdit, ViewMode::Edit),
+        (ViewMode::Read, ViewMode::Edit),
+    ] {
+        app.update(cx, |app, _| app.view_mode = start);
+        cx.dispatch_action(ToggleSourceSplitMode);
+        app.update(cx, |app, _| {
+            let tab = app.active_tab();
+            assert_eq!(app.view_mode, expected, "transition from {start:?}");
+            assert_eq!(
+                app.status,
+                t(app.language, view_mode_status_message(expected)),
+                "status from {start:?}"
+            );
+            assert_eq!(tab.document.instance_id(), instance_id);
+            assert_eq!(tab.document.version(), version);
+            assert_eq!(tab.document.is_dirty(), dirty);
+            assert_eq!(tab.document.text(), text);
+            assert_eq!(tab.selected_range, selection);
+            assert_eq!(tab.undo_stack.len(), undo_len);
+            assert_eq!(tab.redo_stack.len(), redo_len);
+            assert_eq!(tab.editor_scroll.offset(), editor_scroll);
+            let current_preview_scroll = tab.preview_list.logical_scroll_top();
+            assert_eq!(current_preview_scroll.item_ix, preview_scroll.item_ix);
+            assert_eq!(
+                current_preview_scroll.offset_in_item,
+                preview_scroll.offset_in_item
+            );
+            assert!(Arc::ptr_eq(
+                &preview_cache,
+                &tab.document.preview_blocks_shared()
+            ));
+            assert!(Arc::ptr_eq(
+                &visual_cache,
+                &tab.document.visual_blocks_shared()
+            ));
+        });
+    }
+}
+
+#[gpui::test]
+fn source_split_shortcut_preserves_the_legacy_override_id(cx: &mut TestAppContext) {
+    let (app, cx) = cx.add_window_view(|_, cx| MarkionApp::new(cx));
+    let mut overrides = BTreeMap::new();
+    overrides.insert("set-edit-mode".to_string(), "ctrl-alt-v".to_string());
+    cx.update(|window, cx| {
+        cx.clear_key_bindings();
+        bind_app_keys(cx, &overrides);
+        window.focus(&app.read(cx).focus_handle);
+        window.activate_window();
+    });
+
+    app.update(cx, |app, _| app.view_mode = ViewMode::Edit);
+    cx.simulate_keystrokes(menu_shortcuts::SOURCE_SPLIT_MODE.binding.expect("bound"));
+    app.update(cx, |app, _| assert_eq!(app.view_mode, ViewMode::Edit));
+
+    cx.simulate_keystrokes("ctrl-alt-v");
+    app.update(cx, |app, _| assert_eq!(app.view_mode, ViewMode::Split));
 }
 
 #[gpui::test]
@@ -6204,7 +6583,7 @@ fn visual_direct_code_editor_hides_fences_highlights_and_edits_only_payload(
         assert!(tab.document.is_dirty());
     });
 
-    cx.dispatch_action(SetEditMode);
+    cx.dispatch_action(ToggleSourceSplitMode);
     app.update(cx, |app, _| {
         assert_eq!(app.view_mode, ViewMode::Edit);
         assert_eq!(

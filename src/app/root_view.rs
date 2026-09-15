@@ -253,9 +253,8 @@ impl Render for MarkionApp {
                     .on_action(cx.listener(Self::publish_wechat))
                     .on_action(cx.listener(Self::organize_local_images))
                     .on_action(cx.listener(Self::toggle_view_mode))
-                    .on_action(cx.listener(Self::set_edit_mode))
+                    .on_action(cx.listener(Self::toggle_source_split_mode))
                     .on_action(cx.listener(Self::set_visual_edit_mode))
-                    .on_action(cx.listener(Self::set_split_preview_mode))
                     .on_action(cx.listener(Self::set_read_mode))
                     .on_action(cx.listener(Self::toggle_outline))
                     .on_action(cx.listener(Self::toggle_focus_mode))
@@ -296,6 +295,7 @@ impl Render for MarkionApp {
                     .on_action(cx.listener(Self::inline_code))
                     .on_action(cx.listener(Self::insert_link))
                     .on_action(cx.listener(Self::insert_image))
+                    .on_action(cx.listener(Self::paragraph))
                     .on_action(cx.listener(Self::heading1))
                     .on_action(cx.listener(Self::heading2))
                     .on_action(cx.listener(Self::heading3))
@@ -375,7 +375,7 @@ impl Render for MarkionApp {
                             }),
                         ))
                         .child(menu_title_button(
-                            self.git_label(GitMsg::BackupAndSync),
+                            self.git_label(GitMsg::SyncMenu),
                             self.active_menu == Some(AppMenu::Repository),
                             palette,
                             cx.listener(Self::toggle_repository_menu),
@@ -4450,22 +4450,16 @@ pub(super) fn active_menu_dropdown(
                 menu_shortcuts::TOGGLE_VIEW_MODE
             ))
             .child(action_item!(
-                Msg::ItemEditMode,
-                set_edit_mode,
-                SetEditMode,
-                menu_shortcuts::SET_EDIT_MODE
+                Msg::ItemSourceSplitPreview,
+                toggle_source_split_mode,
+                ToggleSourceSplitMode,
+                menu_shortcuts::SOURCE_SPLIT_MODE
             ))
             .child(action_item!(
                 Msg::ItemVisualEditMode,
                 set_visual_edit_mode,
                 SetVisualEditMode,
                 menu_shortcuts::SET_VISUAL_EDIT_MODE
-            ))
-            .child(action_item!(
-                Msg::ItemSplitPreviewMode,
-                set_split_preview_mode,
-                SetSplitPreviewMode,
-                menu_shortcuts::SET_SPLIT_PREVIEW_MODE
             ))
             .child(action_item!(
                 Msg::ItemReadMode,
@@ -4578,6 +4572,12 @@ pub(super) fn active_menu_dropdown(
                     menu_shortcuts::INSERT_IMAGE
                 ))
                 .child(menu_separator(palette))
+                .child(action_item!(
+                    Msg::ItemParagraph,
+                    paragraph,
+                    Paragraph,
+                    menu_shortcuts::PARAGRAPH
+                ))
                 .child(action_item!(
                     Msg::ItemH1,
                     heading1,

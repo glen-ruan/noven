@@ -105,6 +105,7 @@ actions!(
         InlineCode,
         InsertLink,
         InsertImage,
+        Paragraph,
         Heading1,
         Heading2,
         Heading3,
@@ -151,9 +152,8 @@ actions!(
         PublishWechat,
         OrganizeLocalImages,
         ToggleViewMode,
-        SetEditMode,
+        ToggleSourceSplitMode,
         SetVisualEditMode,
-        SetSplitPreviewMode,
         SetReadMode,
         ToggleSidebar,
         ToggleOutline,
@@ -422,12 +422,12 @@ mod menu_shortcuts {
         "Ctrl+Shift+V",
         "Cmd+Shift+V",
     );
-    pub const SET_EDIT_MODE: MenuShortcut =
+    // Keep the legacy id so existing Source shortcut overrides now control
+    // the combined Source/Split Preview action without a preferences migration.
+    pub const SOURCE_SPLIT_MODE: MenuShortcut =
         MenuShortcut::new("set-edit-mode", "secondary-/", "Ctrl+/", "Cmd+/");
     pub const SET_VISUAL_EDIT_MODE: MenuShortcut =
         MenuShortcut::new("set-visual-edit-mode", "secondary-e", "Ctrl+E", "Cmd+E");
-    pub const SET_SPLIT_PREVIEW_MODE: MenuShortcut =
-        MenuShortcut::new("set-split-preview-mode", "secondary-p", "Ctrl+P", "Cmd+P");
     pub const SET_READ_MODE: MenuShortcut =
         MenuShortcut::new("set-read-mode", "secondary-r", "Ctrl+R", "Cmd+R");
     pub const TOGGLE_SIDEBAR: MenuShortcut = MenuShortcut::new(
@@ -489,6 +489,8 @@ mod menu_shortcuts {
         "Ctrl+Shift+I",
         "Cmd+Shift+I",
     );
+    pub const PARAGRAPH: MenuShortcut =
+        MenuShortcut::new("paragraph", "secondary-0", "Ctrl+0", "Cmd+0");
     pub const HEADING_1: MenuShortcut =
         MenuShortcut::new("heading-1", "secondary-1", "Ctrl+1", "Cmd+1");
     pub const HEADING_2: MenuShortcut =
@@ -652,9 +654,8 @@ mod menu_shortcuts {
         PASTE,
         SELECT_ALL,
         TOGGLE_VIEW_MODE,
-        SET_EDIT_MODE,
+        SOURCE_SPLIT_MODE,
         SET_VISUAL_EDIT_MODE,
-        SET_SPLIT_PREVIEW_MODE,
         SET_READ_MODE,
         TOGGLE_SIDEBAR,
         TOGGLE_FILE_TREE,
@@ -673,6 +674,7 @@ mod menu_shortcuts {
         INLINE_CODE,
         INSERT_LINK,
         INSERT_IMAGE,
+        PARAGRAPH,
         HEADING_1,
         HEADING_2,
         HEADING_3,
