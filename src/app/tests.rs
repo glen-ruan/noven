@@ -3414,18 +3414,9 @@ fn builtin_theme_table_exposes_popular_themes_with_unique_names() {
         .find(|theme| theme.name == "Noven Jade")
         .expect("Noven distribution theme");
     assert!(noven.is_dark);
-    assert_eq!(
-        noven.fonts.editor.as_deref(),
-        Some("Noto Sans Mono CJK SC")
-    );
-    assert_eq!(
-        noven.fonts.rendered.as_deref(),
-        Some("Noto Serif CJK SC")
-    );
-    assert_eq!(
-        noven.fonts.code.as_deref(),
-        Some("Noto Sans Mono CJK SC")
-    );
+    assert_eq!(noven.fonts.editor.as_deref(), Some("Noto Sans Mono CJK SC"));
+    assert_eq!(noven.fonts.rendered.as_deref(), Some("Noto Serif CJK SC"));
+    assert_eq!(noven.fonts.code.as_deref(), Some("Noto Sans Mono CJK SC"));
     // Names are unique.
     let mut sorted: Vec<&str> = themes.iter().map(|t| t.name.as_str()).collect();
     sorted.sort_unstable();
@@ -18149,10 +18140,7 @@ fn window_title_follows_active_tab_and_dirty_state(cx: &mut TestAppContext) {
             "title sync must not insert extra document versions"
         );
     });
-    assert_eq!(
-        cx.window_title().as_deref(),
-        Some("Noven - Untitled.md *")
-    );
+    assert_eq!(cx.window_title().as_deref(), Some("Noven - Untitled.md *"));
 
     app.update_in(cx, |app, window, cx| {
         let named = MarkdownDocument::recovered("two", Some(PathBuf::from("notes.md")));
@@ -18168,10 +18156,7 @@ fn window_title_follows_active_tab_and_dirty_state(cx: &mut TestAppContext) {
         assert!(app.sync_window_title(window));
         assert!(!app.sync_window_title(window));
     });
-    assert_eq!(
-        cx.window_title().as_deref(),
-        Some("Noven - Untitled.md *")
-    );
+    assert_eq!(cx.window_title().as_deref(), Some("Noven - Untitled.md *"));
 }
 
 fn write_symbolic_git_head(git_dir: &Path, branch: &str) {

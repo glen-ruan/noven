@@ -623,9 +623,7 @@ mod tests {
             UpdateCheckOutcome::Available { version, url } => {
                 assert!(version.starts_with("9.9.9"));
                 assert!(
-                    url.starts_with(
-                        "https://github.com/glen-ruan/noven/releases/download/v9.9.9/"
-                    ),
+                    url.starts_with("https://github.com/glen-ruan/noven/releases/download/v9.9.9/"),
                     "url should point at the GitHub Release asset: {url}"
                 );
             }

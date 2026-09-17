@@ -5455,11 +5455,7 @@ fn visual_code_editor(
         .border_1()
         .border_color(theme.border)
         .shadow_md()
-        .bg(app.glass_surface(
-            theme.surface_bg,
-            COMPONENT_GLASS_ALPHA,
-            0.04,
-        ))
+        .bg(app.glass_surface(theme.surface_bg, COMPONENT_GLASS_ALPHA, 0.04))
         .text_color(palette.text)
         .font(code_slot_font(&app.resolved_font_families.code))
         .text_size(px(typography.code_font_size))
@@ -6643,11 +6639,7 @@ fn html_table_grid_view(
 /// writes the block's raw text to the clipboard in one step, so users no longer
 /// have to select the code manually. Works in preview, split, read, and Visual
 /// Edit modes.
-fn code_copy_button(
-    app: &MarkionApp,
-    code: String,
-    cx: &mut Context<MarkionApp>,
-) -> Div {
+fn code_copy_button(app: &MarkionApp, code: String, cx: &mut Context<MarkionApp>) -> Div {
     let typography = app.typography_metrics();
     let theme = app.palette();
     div()
@@ -6809,11 +6801,7 @@ fn code_block_view(
         .border_1()
         .border_color(theme.border)
         .shadow_md()
-        .bg(app.glass_surface(
-            theme.surface_bg,
-            COMPONENT_GLASS_ALPHA,
-            0.04,
-        ))
+        .bg(app.glass_surface(theme.surface_bg, COMPONENT_GLASS_ALPHA, 0.04))
         .text_color(palette.text)
         .font(code_slot_font(&app.resolved_font_families.code))
         .text_size(px(typography.code_font_size))

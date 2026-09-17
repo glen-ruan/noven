@@ -6818,9 +6818,7 @@ fn zh(msg: Msg) -> &'static str {
         Msg::DialogAboutDescription => "一款使用 Rust 与 GPUI 构建的本地优先 Markdown 编辑器。",
         Msg::DialogAboutProjectWebsite => "项目网站",
         Msg::DialogAboutGithub => "GitHub",
-        Msg::DialogAboutStarInvite => {
-            "Noven 基于 Markion；如果觉得有用，欢迎为上游项目点 Star。"
-        }
+        Msg::DialogAboutStarInvite => "Noven 基于 Markion；如果觉得有用，欢迎为上游项目点 Star。",
         Msg::DialogAboutStarLink => "在 GitHub 上 Star",
         Msg::DialogUpToDateTitle => "已是最新版本",
         Msg::DialogUpToDateDetail => "您正在使用最新版本的 Markion。",
