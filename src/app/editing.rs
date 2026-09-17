@@ -3017,9 +3017,9 @@ impl MarkionApp {
                 // Theme-driven so tabs stay legible on dark palettes (the previous
                 // hard-coded light hexes rendered white tabs with light text).
                 let bg = if is_active {
-                    palette.surface_bg
+                    frosted(palette.surface_bg, 0.84, 0.14)
                 } else {
-                    palette.panel_bg
+                    frosted(palette.panel_bg, 0.54, 0.08)
                 };
                 let text_color = if is_active {
                     palette.active_text
@@ -3034,7 +3034,7 @@ impl MarkionApp {
                 let hover_bg = if is_active {
                     palette.surface_bg
                 } else {
-                    palette.active_bg
+                    glass(palette.active_bg, 0.72)
                 };
                 div()
                     .id(ElementId::named_usize("document-tab", index))
@@ -3051,11 +3051,9 @@ impl MarkionApp {
                     .flex_shrink()
                     .px_2()
                     .py_1()
-                    .rounded_t_md()
+                    .rounded_lg()
                     .border_1()
-                    .when(is_active, |style| {
-                        style.border_t_2().border_b_0().mb(px(-1.))
-                    })
+                    .when(is_active, |style| style.border_t_2().shadow_md())
                     .border_color(border)
                     .bg(bg)
                     .text_color(text_color)
@@ -3144,9 +3142,12 @@ impl MarkionApp {
 
         div()
             .h(px(document_tab_band_height(self.tabs.len())))
-            .border_b_1()
+            .mx_2()
+            .mt_2()
+            .border_1()
             .border_color(palette.border)
-            .bg(palette.panel_bg)
+            .rounded_lg()
+            .bg(frosted(palette.panel_bg, 0.62, 0.08))
             .flex()
             .child(document_bar)
             // Pinned action region outside the scroll container: the "+" must

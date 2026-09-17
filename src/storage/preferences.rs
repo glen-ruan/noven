@@ -13,10 +13,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{
     AppPreferences, AutoSavePreferences, CodeTheme, DEFAULT_EDITOR_FONT_SIZE,
-    DEFAULT_PARAGRAPH_SPACING, DEFAULT_RENDERED_FONT_SIZE, DocxExportOptions, DocxImagePolicy,
-    DocxPageSize, ExportBackendPreference, ExportPreferences, GitPreferences, PdfExportOptions,
-    PdfPageSize, SidebarTab, normalize_code_font_size, normalize_editor_font_size,
-    normalize_heading_menu_max_level, normalize_paragraph_spacing, normalize_rendered_font_size,
+    DEFAULT_PARAGRAPH_SPACING, DEFAULT_PARTICLE_INTENSITY, DEFAULT_RENDERED_FONT_SIZE,
+    DEFAULT_UI_OPACITY, DocxExportOptions, DocxImagePolicy, DocxPageSize, ExportBackendPreference,
+    ExportPreferences, GitPreferences, PdfExportOptions, PdfPageSize, SidebarTab,
+    normalize_code_font_size, normalize_editor_font_size, normalize_heading_menu_max_level,
+    normalize_paragraph_spacing, normalize_particle_intensity, normalize_rendered_font_size,
+    normalize_ui_opacity,
 };
 
 /// File name of the retired `key=value` preferences format, looked for next
@@ -50,6 +52,14 @@ struct PreferencesFile {
         deserialize_with = "deserialize_optional_code_font_size"
     )]
     code_font_size: Option<u16>,
+    #[serde(deserialize_with = "deserialize_bool_or_true")]
+    glass_effect_enabled: bool,
+    #[serde(deserialize_with = "deserialize_ui_opacity")]
+    ui_opacity: u16,
+    #[serde(deserialize_with = "deserialize_bool_or_true")]
+    particle_effects_enabled: bool,
+    #[serde(deserialize_with = "deserialize_particle_intensity")]
+    particle_intensity: u16,
     #[serde(deserialize_with = "deserialize_bool_or_false")]
     preview_adaptive_width: bool,
     #[serde(deserialize_with = "deserialize_editor_font_size")]
@@ -295,6 +305,10 @@ impl From<&AppPreferences> for PreferencesFile {
             code_font_size: preferences
                 .code_font_size
                 .map(|size| normalize_code_font_size(size as i64)),
+            glass_effect_enabled: preferences.glass_effect_enabled,
+            ui_opacity: normalize_ui_opacity(preferences.ui_opacity as i64),
+            particle_effects_enabled: preferences.particle_effects_enabled,
+            particle_intensity: normalize_particle_intensity(preferences.particle_intensity as i64),
             preview_adaptive_width: preferences.preview_adaptive_width,
             editor_font_size: normalize_editor_font_size(preferences.editor_font_size as i64),
             rendered_font_size: normalize_rendered_font_size(preferences.rendered_font_size as i64),
@@ -347,7 +361,14 @@ impl From<&AppPreferences> for PreferencesFile {
 impl From<PreferencesFile> for AppPreferences {
     fn from(file: PreferencesFile) -> Self {
         Self {
-            theme: file.theme,
+            // RustText Jade was the distribution default before the Noven
+            // rebrand. Preserve existing users' visual choice while writing
+            // the new public theme name on the next preferences update.
+            theme: if file.theme.eq_ignore_ascii_case("RustText Jade") {
+                "Noven Jade".to_string()
+            } else {
+                file.theme
+            },
             custom_theme: file.custom_theme.filter(|name| !name.is_empty()),
             language: file.language,
             check_for_updates_on_startup: file.check_for_updates_on_startup,
@@ -360,6 +381,10 @@ impl From<PreferencesFile> for AppPreferences {
             code_font_size: file
                 .code_font_size
                 .map(|size| normalize_code_font_size(size as i64)),
+            glass_effect_enabled: file.glass_effect_enabled,
+            ui_opacity: normalize_ui_opacity(file.ui_opacity as i64),
+            particle_effects_enabled: file.particle_effects_enabled,
+            particle_intensity: normalize_particle_intensity(file.particle_intensity as i64),
             preview_adaptive_width: file.preview_adaptive_width,
             editor_font_size: normalize_editor_font_size(file.editor_font_size as i64),
             rendered_font_size: normalize_rendered_font_size(file.rendered_font_size as i64),
@@ -498,6 +523,26 @@ pub fn parse_legacy_app_preferences(text: &str) -> io::Result<AppPreferences> {
             "code_line_numbers" => {
                 preferences.code_line_numbers = parse_preference_bool(value.trim())?;
             }
+            "glass_effect_enabled" => {
+                preferences.glass_effect_enabled = parse_preference_bool(value.trim())?;
+            }
+            "ui_opacity" => {
+                preferences.ui_opacity = value
+                    .trim()
+                    .parse::<i64>()
+                    .map(normalize_ui_opacity)
+                    .unwrap_or(DEFAULT_UI_OPACITY);
+            }
+            "particle_effects_enabled" => {
+                preferences.particle_effects_enabled = parse_preference_bool(value.trim())?;
+            }
+            "particle_intensity" => {
+                preferences.particle_intensity = value
+                    .trim()
+                    .parse::<i64>()
+                    .map(normalize_particle_intensity)
+                    .unwrap_or(DEFAULT_PARTICLE_INTENSITY);
+            }
             "preview_adaptive_width" => {
                 preferences.preview_adaptive_width = parse_preference_bool(value.trim())?;
             }
@@ -594,6 +639,26 @@ where
     Ok(normalize_paragraph_spacing(deserialize_integer_or(
         deserializer,
         DEFAULT_PARAGRAPH_SPACING as i64,
+    )?))
+}
+
+fn deserialize_ui_opacity<'de, D>(deserializer: D) -> Result<u16, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(normalize_ui_opacity(deserialize_integer_or(
+        deserializer,
+        DEFAULT_UI_OPACITY as i64,
+    )?))
+}
+
+fn deserialize_particle_intensity<'de, D>(deserializer: D) -> Result<u16, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(normalize_particle_intensity(deserialize_integer_or(
+        deserializer,
+        DEFAULT_PARTICLE_INTENSITY as i64,
     )?))
 }
 
@@ -777,6 +842,16 @@ mod tests {
     }
 
     #[test]
+    fn legacy_rusttext_jade_theme_migrates_to_noven_jade() {
+        let parsed = parse_app_preferences("theme = \"RustText Jade\"\n").unwrap();
+        assert_eq!(parsed.theme, "Noven Jade");
+
+        let rendered = render_app_preferences(&parsed);
+        assert!(rendered.contains("theme = \"Noven Jade\""));
+        assert!(!rendered.contains("theme = \"RustText Jade\""));
+    }
+
+    #[test]
     fn code_display_preferences_default_when_missing() {
         let missing = parse_app_preferences("theme = \"Paper\"\n").unwrap();
         assert_eq!(missing.code_theme, CodeTheme::Dark);
@@ -803,6 +878,31 @@ mod tests {
         assert_eq!(
             floored.code_font_size,
             Some(crate::model::MIN_CODE_FONT_SIZE)
+        );
+    }
+
+    #[test]
+    fn visual_effect_preferences_round_trip_and_clamp() {
+        let preferences = AppPreferences {
+            glass_effect_enabled: false,
+            ui_opacity: 61,
+            particle_effects_enabled: true,
+            particle_intensity: 3,
+            ..AppPreferences::default()
+        };
+        let rendered = render_app_preferences(&preferences);
+        assert!(rendered.contains("glass_effect_enabled = false"));
+        assert!(rendered.contains("ui_opacity = 61"));
+        assert!(rendered.contains("particle_effects_enabled = true"));
+        assert!(rendered.contains("particle_intensity = 3"));
+        assert_eq!(parse_app_preferences(&rendered).unwrap(), preferences);
+
+        let bounded = parse_app_preferences("ui_opacity = 999\nparticle_intensity = 99\n")
+            .expect("out-of-range visual effects clamp safely");
+        assert_eq!(bounded.ui_opacity, crate::model::MAX_UI_OPACITY);
+        assert_eq!(
+            bounded.particle_intensity,
+            crate::model::MAX_PARTICLE_INTENSITY
         );
     }
 

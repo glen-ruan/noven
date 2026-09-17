@@ -1,20 +1,22 @@
 <a id="english"></a>
 
 <p align="center">
-  <img src="assets/markion-logo.svg" alt="Markion logo" width="128" height="128">
+  <img src="assets/noven.png" alt="Noven logo" width="128" height="128">
 </p>
 
 <p align="center">
   <strong>English</strong> · <a href="#simplified-chinese">简体中文</a>
 </p>
 
-# Markion
+# Noven
+
+> A Chinese-friendly native Markdown note editor based on [Markion](https://github.com/willmove/markion). See [RUSTTEXT.md](RUSTTEXT.md) for Noven defaults, build instructions, and upstream attribution.
 
 Markion is a native desktop Markdown editor built with Rust and GPUI. It combines responsive source editing, a source-backed Visual Edit mode, live preview, workspace tools, and multi-format export in one lightweight application. Markdown remains the canonical document format—no Electron, Tauri, or WebView.
 
 ## Install
 
-Download the latest build from [GitHub Releases](https://github.com/willmove/markion/releases).
+Download the latest Noven build from [GitHub Releases](https://github.com/glen-ruan/noven/releases).
 
 | Platform | Release packages | Target |
 |---|---|---|
@@ -49,7 +51,7 @@ The **View → Source/Split Preview** command (`Ctrl+/` on Windows/Linux, `Cmd+/
 - Markdown files can be dragged from the operating-system file manager into Markion.
 - The Files and Outline panels are toggleable, and sidebar and split-pane dividers are draggable.
 - The Outline panel lists the document's heading hierarchy as a collapsible tree: each heading with descendants exposes a disclosure control, outlines start fully expanded, folding is per-document and session-only, and the section containing the cursor is highlighted. Clicking a heading jumps to its source position—or to the rendered heading in Read mode.
-- The native window title shows the active file name after the Markion brand, with a `*` suffix when the document has unsaved changes. The status bar keeps save state and transient operation feedback, plus a compact persistent context: the active document's character and word count, the caret's one-based line and column when an editing surface is present, and the current Git branch when the document or workspace belongs to a repository.
+- The native window title shows the active file name after the Noven brand, with a `*` suffix when the document has unsaved changes. The status bar keeps save state and transient operation feedback, plus a compact persistent context: the active document's character and word count, the caret's one-based line and column when an editing surface is present, and the current Git branch when the document or workspace belongs to a repository.
 - **Backup and Sync** keeps a notes folder protected at a sync location with a one-click **Sync Now** flow and plain-language status. Git powers the safe version history underneath; technical controls stay in Advanced Git details. See the [Backup and Sync guide](docs/git-sync.md) for setup, authentication, conflicts, and recovery.
 
 ## Markdown editing and preview
@@ -237,7 +239,7 @@ Markion 是一款使用 Rust 和 GPUI 构建的原生桌面 Markdown 编辑器�
 
 ## 安装
 
-请从 [GitHub Releases](https://github.com/willmove/markion/releases) 下载最新版本。
+请从 [GitHub Releases](https://github.com/glen-ruan/noven/releases) 下载最新版本。
 
 | 平台 | 发布包 | 目标架构 |
 |---|---|---|

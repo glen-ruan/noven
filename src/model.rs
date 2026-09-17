@@ -112,6 +112,17 @@ pub const MIN_CODE_FONT_SIZE: u16 = 10;
 /// Largest supported fenced-code font size in logical pixels.
 pub const MAX_CODE_FONT_SIZE: u16 = 32;
 
+/// Default UI glass opacity percentage. This controls application-painted
+/// layers; compositor blur remains owned by the desktop environment.
+pub const DEFAULT_UI_OPACITY: u16 = 78;
+pub const MIN_UI_OPACITY: u16 = 35;
+pub const MAX_UI_OPACITY: u16 = 95;
+
+/// Ambient particle density preset (1=low, 2=medium, 3=high).
+pub const DEFAULT_PARTICLE_INTENSITY: u16 = 1;
+pub const MIN_PARTICLE_INTENSITY: u16 = 1;
+pub const MAX_PARTICLE_INTENSITY: u16 = 3;
+
 /// Normalizes a persisted heading-menu depth to the supported values `5` or `6`.
 pub fn normalize_heading_menu_max_level(level: u8) -> u8 {
     if level >= EXTENDED_HEADING_MENU_MAX_LEVEL {
@@ -139,6 +150,14 @@ pub fn normalize_paragraph_spacing(value: i64) -> u16 {
 /// Clamps an explicit fenced-code font size read from UI or configuration.
 pub fn normalize_code_font_size(value: i64) -> u16 {
     value.clamp(MIN_CODE_FONT_SIZE as i64, MAX_CODE_FONT_SIZE as i64) as u16
+}
+
+pub fn normalize_ui_opacity(value: i64) -> u16 {
+    value.clamp(MIN_UI_OPACITY as i64, MAX_UI_OPACITY as i64) as u16
+}
+
+pub fn normalize_particle_intensity(value: i64) -> u16 {
+    value.clamp(MIN_PARTICLE_INTENSITY as i64, MAX_PARTICLE_INTENSITY as i64) as u16
 }
 
 /// Light/Dark code display theme for fenced code blocks: selects the token
@@ -425,6 +444,16 @@ pub struct AppPreferences {
     /// Explicit fenced-code font size in logical pixels. `None` derives the
     /// size from the rendered body size (the historical behavior).
     pub code_font_size: Option<u16>,
+    /// Requests compositor blur when available. On X11 this gracefully
+    /// degrades to plain alpha transparency.
+    pub glass_effect_enabled: bool,
+    /// Application-painted glass opacity as a percentage.
+    pub ui_opacity: u16,
+    /// Enables the non-interactive ambient particle layer behind workspace
+    /// surfaces.
+    pub particle_effects_enabled: bool,
+    /// Ambient particle density preset (1..=3).
+    pub particle_intensity: u16,
     pub preview_adaptive_width: bool,
     /// Source-editor font size in logical pixels.
     pub editor_font_size: u16,
@@ -497,7 +526,7 @@ pub struct AppPreferences {
 impl Default for AppPreferences {
     fn default() -> Self {
         Self {
-            theme: "Paper".to_string(),
+            theme: "Noven Jade".to_string(),
             custom_theme: None,
             focus_mode: false,
             typewriter_mode: false,
@@ -505,6 +534,10 @@ impl Default for AppPreferences {
             code_theme: CodeTheme::default(),
             code_long_line_wrap: true,
             code_font_size: None,
+            glass_effect_enabled: true,
+            ui_opacity: DEFAULT_UI_OPACITY,
+            particle_effects_enabled: true,
+            particle_intensity: DEFAULT_PARTICLE_INTENSITY,
             preview_adaptive_width: false,
             editor_font_size: DEFAULT_EDITOR_FONT_SIZE,
             rendered_font_size: DEFAULT_RENDERED_FONT_SIZE,
@@ -519,7 +552,7 @@ impl Default for AppPreferences {
             markdown_auto_pair: true,
             sidebar_visible: true,
             sidebar_tab: SidebarTab::default(),
-            language: "en".to_string(),
+            language: "zh-hans".to_string(),
             check_for_updates_on_startup: false,
             last_update_check: None,
             auto_save: AutoSavePreferences::default(),
@@ -972,6 +1005,19 @@ pub fn builtin_theme_definitions() -> Vec<ThemeDefinition> {
                 0xf4f4f5, 0xffffff, 0xfafafa, 0x18181b, 0x71717a, 0xd4d4d8, 0xe4e4e7, 0x3f3f46,
             ),
         ),
+        // --- Noven distribution theme ---
+        ThemeDefinition {
+            name: "Noven Jade".to_string(),
+            is_dark: true,
+            colors: ThemeColors::new(
+                0x09191b, 0x10282a, 0x0d2224, 0xe8f4f1, 0x91aaa5, 0x2a5553, 0x174f49, 0x67e7cf,
+            ),
+            fonts: ThemeFonts {
+                editor: Some("Noto Sans Mono CJK SC".to_string()),
+                rendered: Some("Noto Serif CJK SC".to_string()),
+                code: Some("Noto Sans Mono CJK SC".to_string()),
+            },
+        },
         // --- Popular editor themes ---
         ThemeDefinition::palette(
             "GitHub Light",

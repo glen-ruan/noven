@@ -1,0 +1,11 @@
+Package: rusttext
+Version: 0.3.10-5
+Section: editors
+Priority: optional
+Architecture: amd64
+Maintainer: Noven contributors
+Depends: libwayland-client0, libxkbcommon0, libxkbcommon-x11-0, libxcb1, libvulkan1, libfontconfig1, libasound2, libglib2.0-0
+Description: Native Rust and GPUI Markdown note editor
+ Noven is a Chinese-friendly distribution of the MIT-licensed Markion
+ editor. It provides source and visual editing, live preview, themes,
+ configurable fonts, workspace navigation, recovery, and export tools.

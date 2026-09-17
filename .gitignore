@@ -3,6 +3,7 @@
 
 # Packaging output (cargo-packager writes installers/.app/.deb/.exe here)
 /dist/
+/work/
 
 # Profiling / coverage output (from -Cprofile, -Cinstrument-coverage, etc.)
 *.profraw

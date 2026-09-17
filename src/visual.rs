@@ -6433,10 +6433,10 @@ mod tests {
     fn welcome_prose_stays_visual_outside_the_focused_block() {
         let doc = MarkdownDocument::from_text(crate::DEFAULT_WELCOME_MARKDOWN);
         let blocks = doc.visual_blocks();
-        assert!(crate::DEFAULT_WELCOME_MARKDOWN.starts_with("# Welcome to Markion\n"));
+        assert!(crate::DEFAULT_WELCOME_MARKDOWN.starts_with("# Welcome to Noven\n"));
         for marker in [
             "**bold**",
-            "![Markion logo](assets/markion.png",
+            "![Noven logo](assets/noven.png",
             "- [ ] Export when ready",
             "| Syntax | Example | Purpose |",
             "<table",

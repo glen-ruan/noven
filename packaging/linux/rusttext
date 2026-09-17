@@ -1,0 +1,10 @@
+#!/bin/sh
+
+# Prefer X11 when available so the desktop window manager can provide the
+# user's own titlebar, controls, rounded frame, and drag behavior. Set
+# RUSTTEXT_USE_WAYLAND=1 to keep GPUI on native Wayland instead.
+if [ -n "${DISPLAY:-}" ] && [ "${RUSTTEXT_USE_WAYLAND:-0}" != "1" ]; then
+    unset WAYLAND_DISPLAY
+fi
+
+exec /usr/lib/rusttext/rusttext-bin "$@"

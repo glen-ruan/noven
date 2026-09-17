@@ -31,7 +31,7 @@ const GITHUB_LATEST_RELEASE_API_URL: &str =
 /// Human-facing latest Release page used when discovery or an exact platform
 /// asset lookup fails. Keeping this separate from the API URL gives every
 /// recoverable failure an actionable browser fallback.
-const GITHUB_LATEST_RELEASE_URL: &str = "https://github.com/willmove/markion/releases/latest";
+const GITHUB_LATEST_RELEASE_URL: &str = "https://github.com/glen-ruan/noven/releases/latest";
 
 /// Signed update manifest endpoints in fallback order. The release workflow
 /// publishes one manifest per host — the Aliyun OSS mirror and the GitHub
@@ -51,7 +51,7 @@ const OSS_SIGNED_UPDATE_MANIFEST_URL: &str =
 /// mirror at all.
 #[cfg_attr(not(windows), allow(dead_code))]
 const GITHUB_SIGNED_UPDATE_MANIFEST_URL: &str =
-    "https://github.com/willmove/markion/releases/latest/download/update.json";
+    "https://github.com/glen-ruan/noven/releases/latest/download/update.json";
 
 /// Ordered manifest endpoints consumed by the signed updater and asserted by
 /// the unit tests. Non-Windows builds keep these reachable for the tests
@@ -529,7 +529,7 @@ mod tests {
     fn release_with_version(version: &str) -> GitHubRelease {
         GitHubRelease {
             tag_name: format!("v{version}"),
-            html_url: format!("https://github.com/willmove/markion/releases/tag/v{version}"),
+            html_url: format!("https://github.com/glen-ruan/noven/releases/tag/v{version}"),
             assets: [
                 ("markion_9.9.9_x64-setup.exe", "windows"),
                 ("Markion_9.9.9_aarch64.dmg", "macos"),
@@ -540,7 +540,7 @@ mod tests {
             .map(|(name, platform)| GitHubReleaseAsset {
                 name: name.to_string(),
                 browser_download_url: format!(
-                    "https://github.com/willmove/markion/releases/download/v{version}/{platform}"
+                    "https://github.com/glen-ruan/noven/releases/download/v{version}/{platform}"
                 ),
             })
             .collect(),
@@ -624,7 +624,7 @@ mod tests {
                 assert!(version.starts_with("9.9.9"));
                 assert!(
                     url.starts_with(
-                        "https://github.com/willmove/markion/releases/download/v9.9.9/"
+                        "https://github.com/glen-ruan/noven/releases/download/v9.9.9/"
                     ),
                     "url should point at the GitHub Release asset: {url}"
                 );
@@ -649,8 +649,8 @@ mod tests {
     #[test]
     fn linux_asset_follows_the_distribution_family() {
         let release = release_with_version("9.9.9");
-        let appimage_url = "https://github.com/willmove/markion/releases/download/v9.9.9/appimage";
-        let deb_url = "https://github.com/willmove/markion/releases/download/v9.9.9/linux";
+        let appimage_url = "https://github.com/glen-ruan/noven/releases/download/v9.9.9/appimage";
+        let deb_url = "https://github.com/glen-ruan/noven/releases/download/v9.9.9/linux";
         let offered = |os_release: Option<&str>| {
             browser_download_url_with_os_release(&release, "linux", "x86_64", os_release).unwrap()
         };
@@ -717,10 +717,10 @@ mod tests {
         let release: GitHubRelease = serde_json::from_str(
             r#"{
                 "tag_name": "v9.9.9",
-                "html_url": "https://github.com/willmove/markion/releases/tag/v9.9.9",
+                "html_url": "https://github.com/glen-ruan/noven/releases/tag/v9.9.9",
                 "assets": [{
                     "name": "markion_9.9.9_x64-setup.exe",
-                    "browser_download_url": "https://github.com/willmove/markion/releases/download/v9.9.9/markion_9.9.9_x64-setup.exe"
+                    "browser_download_url": "https://github.com/glen-ruan/noven/releases/download/v9.9.9/markion_9.9.9_x64-setup.exe"
                 }]
             }"#,
         )

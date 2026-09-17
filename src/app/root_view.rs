@@ -1,5 +1,5 @@
 use super::*;
-use crate::ui::icon::IconKind;
+use crate::ui::icon::{Icon, IconKind};
 
 impl Focusable for MarkionApp {
     fn focus_handle(&self, _: &App) -> FocusHandle {
@@ -27,6 +27,17 @@ impl Render for MarkionApp {
             self.sync_emoji_completer_state(cx);
         }
         let palette = self.palette();
+        window.set_background_appearance(if self.glass_effect_enabled {
+            WindowBackgroundAppearance::Blurred
+        } else {
+            WindowBackgroundAppearance::Transparent
+        });
+        let root_glass_alpha = self.glass_alpha(ROOT_GLASS_ALPHA);
+        let chrome_glass = self.glass_surface(palette.panel_bg, CHROME_GLASS_ALPHA, 0.08);
+        let content_glass = self.glass_surface(palette.surface_bg, CONTENT_GLASS_ALPHA, 0.16);
+        let particle_effects_enabled = self.particle_effects_enabled;
+        let particle_intensity = self.particle_intensity;
+        let particle_viewport = window.viewport_size();
         let typography = self.typography_metrics();
         // The preview pane is hidden in Edit mode, so skip the full-document
         // parse that produces its blocks. That parse is invalidated on every
@@ -161,7 +172,7 @@ impl Render for MarkionApp {
         let preview_items = preview_blocks.clone();
         let preview_items_doc_dir = document_dir.clone();
         let preview_code_line_numbers = self.code_line_numbers;
-        let preview_code_theme = self.code_theme;
+        let preview_code_theme = self.effective_code_theme();
         let preview_code_wrap = self.code_long_line_wrap;
         let preview_display_scale = window.scale_factor();
         let preview_list_state = self
@@ -197,7 +208,7 @@ impl Render for MarkionApp {
         div()
             .size_full()
             .relative()
-            .bg(palette.app_bg)
+            .bg(glass(palette.app_bg, root_glass_alpha))
             .text_color(palette.text)
             .font_family(".SystemUIFont")
             .track_focus(&self.focus_handle(cx))
@@ -318,17 +329,28 @@ impl Render for MarkionApp {
             })
             .flex()
             .flex_col()
+            .when(particle_effects_enabled, |root| {
+                root.child(ambient_particles_view(
+                    palette,
+                    particle_intensity,
+                    particle_viewport,
+                ))
+            })
             .child(
-                div().h(px(28.)).child(
+                div().h(px(40.)).mx_2().mt_1().child(
                     div()
-                        .h(px(28.))
-                        .px_2()
-                        .border_b_1()
+                        .id("app-menu-strip")
+                        .h(px(34.))
+                        .px_3()
+                        .border_1()
                         .border_color(palette.border)
-                        .bg(palette.panel_bg)
+                        .rounded_lg()
+                        .shadow_md()
+                        .bg(chrome_glass)
                         .flex()
                         .items_center()
                         .gap_1()
+                        .overflow_x_scroll()
                         .child(menu_title_button(
                             self.tr(Msg::MenuFile),
                             self.active_menu == Some(AppMenu::File),
@@ -391,7 +413,35 @@ impl Render for MarkionApp {
                             cx.listener(|app, _: &MouseMoveEvent, _, cx| {
                                 app.hover_menu(AppMenu::Help, cx);
                             }),
-                        )),
+                        ))
+                        .child(div().flex_1())
+                        .child(
+                            div()
+                                .ml_2()
+                                .pl_2()
+                                .border_l_1()
+                                .border_color(palette.border)
+                                .flex_shrink_0()
+                                .flex()
+                                .items_center()
+                                .gap_1()
+                                .child(view_mode_pill(
+                                    "Markdown",
+                                    matches!(self.view_mode, ViewMode::VisualEdit),
+                                    palette,
+                                    cx.listener(|app, _, window, cx| {
+                                        app.set_visual_edit_mode(&SetVisualEditMode, window, cx);
+                                    }),
+                                ))
+                                .child(view_mode_pill(
+                                    self.tr(Msg::LabelPreview),
+                                    matches!(self.view_mode, ViewMode::Read),
+                                    palette,
+                                    cx.listener(|app, _, window, cx| {
+                                        app.set_read_mode(&SetReadMode, window, cx);
+                                    }),
+                                )),
+                        ),
                 ),
             )
             .child(
@@ -413,7 +463,7 @@ impl Render for MarkionApp {
                     .child(sidebar_view(self, cx))
                     // Sidebar/pane divider: only when the sidebar is visible.
                     .when(self.sidebar_visible, |d| {
-                        d.child(sidebar_resize_handle_view(palette.border, cx))
+                        d.child(sidebar_resize_handle_view(glass(palette.border, 0.), cx))
                     })
                     .child(
                         div()
@@ -484,6 +534,7 @@ impl Render for MarkionApp {
                                     self.resolved_font_families.rendered.clone(),
                                     document_tab_band_visible(self.tabs.len()),
                                     constrain_read_preview,
+                                    content_glass,
                                     cx,
                                 )
                             } else {
@@ -495,8 +546,10 @@ impl Render for MarkionApp {
                                         div()
                                             .size_full()
                                             .p(px(PANE_INNER_PADDING))
-                                            .bg(palette.surface_bg)
+                                            .bg(content_glass)
                                             .border_1()
+                                            .rounded_lg()
+                                            .shadow_md()
                                             .when(
                                                 document_tab_band_visible(self.tabs.len()),
                                                 |style| style.border_t_0(),
@@ -594,11 +647,13 @@ impl Render for MarkionApp {
                                             .size_full()
                                             .pl(px(PANE_INNER_PADDING))
                                             .pr(px(PREVIEW_SCROLLBAR_SAFE_RIGHT_PADDING))
-                                            .bg(palette.surface_bg)
+                                            .bg(content_glass)
                                             .font_family(
                                                 self.resolved_font_families.rendered.clone(),
                                             )
                                             .border_1()
+                                            .rounded_lg()
+                                            .shadow_md()
                                             .when(
                                                 document_tab_band_visible(self.tabs.len()),
                                                 |style| style.border_t_0(),
@@ -700,10 +755,15 @@ impl Render for MarkionApp {
             )
             .child(
                 div()
-                    .h(px(28.))
-                    .px_4()
-                    .border_t_1()
+                    .h(px(32.))
+                    .mx_2()
+                    .mb_2()
+                    .px_3()
+                    .border_1()
                     .border_color(palette.border)
+                    .rounded_lg()
+                    .shadow_md()
+                    .bg(chrome_glass)
                     .text_size(px(12.))
                     .text_color(palette.muted)
                     .flex()
@@ -845,6 +905,72 @@ impl Render for MarkionApp {
                 root.child(markdown_reference_view(self, cx))
             })
     }
+}
+
+/// A small, deterministic ambient layer painted behind every glass surface.
+/// Particles are intentionally sparse and slow: they give transparency a
+/// visible depth cue without competing with document content or accepting
+/// pointer input.
+fn ambient_particles_view(
+    palette: ThemePalette,
+    intensity: u16,
+    viewport: Size<Pixels>,
+) -> AnyElement {
+    let intensity = normalize_particle_intensity(intensity as i64);
+    let count: usize = match intensity {
+        1 => 6,
+        2 => 10,
+        _ => 14,
+    };
+    let width = f32::from(viewport.width).max(1.);
+    let height = f32::from(viewport.height).max(1.);
+
+    div()
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full()
+        .overflow_hidden()
+        .children((0..count).map(move |index| {
+            let x_ratio = ((index * 37 + 11) % 97) as f32 / 97.;
+            let y_ratio = ((index * 53 + 19) % 89) as f32 / 89.;
+            let base_x = width * x_ratio;
+            let base_y = height * y_ratio;
+            let radius = 2.2 + (index % 4) as f32 * 0.75;
+            let travel = 8. + (index % 3) as f32 * 5.;
+            let phase = ((index * 17) % 100) as f32 / 100.;
+            let duration = 14 + (index % 5) as u64 * 3;
+            let color = if index % 3 == 0 {
+                palette.active_text
+            } else {
+                palette.border
+            };
+
+            div()
+                .absolute()
+                .left(px(base_x))
+                .top(px(base_y))
+                .w(px(radius))
+                .h(px(radius))
+                .rounded_full()
+                .bg(glass(color, 0.62))
+                .shadow_md()
+                .with_animation(
+                    ("ambient-particle", index),
+                    Animation::new(Duration::from_secs(duration)).repeat(),
+                    move |particle, delta| {
+                        let angle = (delta + phase).fract() * std::f32::consts::TAU;
+                        let drift_x = angle.cos() * travel * 0.45;
+                        let drift_y = angle.sin() * travel;
+                        let pulse = (angle.sin() * 0.5 + 0.5) * 0.28 + 0.2;
+                        particle
+                            .left(px(base_x + drift_x))
+                            .top(px(base_y + drift_y))
+                            .opacity(pulse)
+                    },
+                )
+        }))
+        .into_any_element()
 }
 
 /// Root-hosted About Markion modal. The platform prompt detail is plain text,
@@ -1238,7 +1364,9 @@ fn image_tab_view(
         .m(px(PANE_OUTER_PADDING))
         .border_1()
         .border_color(palette.border)
-        .bg(palette.surface_bg)
+        .rounded_lg()
+        .shadow_md()
+        .bg(app.glass_surface(palette.surface_bg, CONTENT_GLASS_ALPHA, 0.16))
         .overflow_x_scroll()
         .overflow_y_scroll()
         .track_scroll(&image_tab.scroll)
@@ -1855,6 +1983,7 @@ pub(super) fn visual_edit_surface_view(
     rendered_font_family: SharedString,
     connected_to_tab_band: bool,
     constrain_width: bool,
+    content_glass: Rgba,
     cx: &mut Context<MarkionApp>,
 ) -> Div {
     let is_empty = items.is_empty();
@@ -1912,11 +2041,13 @@ pub(super) fn visual_edit_surface_view(
                 .size_full()
                 .pl(px(PANE_INNER_PADDING))
                 .pr(px(PREVIEW_SCROLLBAR_SAFE_RIGHT_PADDING))
-                .bg(palette.surface_bg)
+                .bg(content_glass)
                 .font_family(rendered_font_family)
                 .border_1()
                 .when(connected_to_tab_band, |surface| surface.border_t_0())
                 .border_color(palette.border)
+                .rounded_lg()
+                .shadow_md()
                 .cursor(CursorStyle::IBeam)
                 .on_mouse_down(
                     MouseButton::Left,
@@ -2646,6 +2777,7 @@ fn file_tree_rows(
                 &app.collapsed_tree_paths,
                 tree_content_width,
                 drag_enabled,
+                app.ui_opacity,
                 app.git_ui
                     .snapshot
                     .as_ref()
@@ -2698,6 +2830,7 @@ fn file_tree_entry_row(
     collapsed_tree_paths: &HashSet<PathBuf>,
     tree_content_width: f32,
     drag_enabled: bool,
+    ui_opacity: u16,
     git_decoration: Option<String>,
 ) -> Stateful<Div> {
     let left_app_entity = app_entity.clone();
@@ -2723,11 +2856,11 @@ fn file_tree_entry_row(
     let icon_kind =
         crate::ui::icon::icon_for(&entry.path, entry.kind == FileTreeEntryKind::Directory);
     let bg = if is_active {
-        palette.active_bg
+        glass(palette.active_bg, scaled_glass_alpha(0.58, ui_opacity))
     } else if is_selected {
-        palette.surface_bg
+        glass(palette.active_bg, scaled_glass_alpha(0.28, ui_opacity))
     } else {
-        palette.panel_bg
+        glass(palette.panel_bg, 0.)
     };
     let text_color = if is_active || is_selected {
         palette.active_text
@@ -2736,7 +2869,8 @@ fn file_tree_entry_row(
     } else {
         palette.muted
     };
-    let drop_highlight = palette.active_bg;
+    let hover_bg = glass(palette.active_bg, scaled_glass_alpha(0.34, ui_opacity));
+    let drop_highlight = glass(palette.active_bg, scaled_glass_alpha(0.62, ui_opacity));
     let row_id = entry.path.to_string_lossy().into_owned();
 
     div()
@@ -2755,7 +2889,7 @@ fn file_tree_entry_row(
         .cursor_pointer()
         .hover(move |style| {
             if clickable || entry_kind == FileTreeEntryKind::Directory {
-                style.bg(palette.active_bg)
+                style.bg(hover_bg)
             } else {
                 style
             }
@@ -3201,10 +3335,12 @@ pub(super) fn outline_panel_body(app: &MarkionApp, cx: &mut Context<MarkionApp>)
                         let offset = heading.offset;
                         let title = heading.title.clone();
                         let background = if row.active {
-                            palette.active_bg
+                            glass(palette.active_bg, app.glass_alpha(0.58))
                         } else {
-                            palette.panel_bg
+                            glass(palette.panel_bg, 0.)
                         };
+                        let row_hover = glass(palette.active_bg, app.glass_alpha(0.34));
+                        let disclosure_hover = glass(palette.active_bg, app.glass_alpha(0.24));
                         let text_color = if row.active {
                             palette.active_text
                         } else {
@@ -3228,7 +3364,7 @@ pub(super) fn outline_panel_body(app: &MarkionApp, cx: &mut Context<MarkionApp>)
                                 .justify_center()
                                 .rounded_sm()
                                 .cursor_pointer()
-                                .hover(move |style| style.bg(palette.surface_bg))
+                                .hover(move |style| style.bg(disclosure_hover))
                                 .child(crate::ui::icon::icon(
                                     icon,
                                     OUTLINE_DISCLOSURE_ICON_SIZE,
@@ -3266,7 +3402,7 @@ pub(super) fn outline_panel_body(app: &MarkionApp, cx: &mut Context<MarkionApp>)
                             .text_size(px(12.))
                             .line_height(px(OUTLINE_ROW_LINE_HEIGHT))
                             .text_color(text_color)
-                            .hover(move |style| style.bg(palette.active_bg))
+                            .hover(move |style| style.bg(row_hover))
                             .child(disclosure)
                             .child(
                                 div()
@@ -3301,6 +3437,7 @@ pub(super) fn outline_panel_body(app: &MarkionApp, cx: &mut Context<MarkionApp>)
 /// document Outline, and the whole column can be toggled on/off as one unit.
 pub(super) fn sidebar_view(app: &MarkionApp, cx: &mut Context<MarkionApp>) -> Div {
     let palette = app.palette();
+    let sidebar_surface = app.glass_surface(palette.surface_bg, CONTENT_GLASS_ALPHA, 0.16);
     let app_entity = cx.entity();
     let active_tab = app.sidebar_tab;
     // Width is driven by `app.sidebar_width` so the resize divider can change
@@ -3329,16 +3466,21 @@ pub(super) fn sidebar_view(app: &MarkionApp, cx: &mut Context<MarkionApp>) -> Di
     } else {
         palette.text
     };
-    let hover_bg = palette.active_bg;
+    let hover_bg = glass(palette.active_bg, app.glass_alpha(0.3));
+    let active_tab_bg = glass(palette.active_bg, app.glass_alpha(0.48));
 
     div()
         .w(px(sidebar_width))
         .min_h_0()
         .flex_shrink_0()
+        .my_2()
+        .ml_2()
         .p(px(SIDEBAR_COMPACT_PADDING))
-        .border_r_1()
+        .border_1()
         .border_color(palette.border)
-        .bg(palette.panel_bg)
+        .rounded_lg()
+        .shadow_md()
+        .bg(sidebar_surface)
         .flex()
         .flex_col()
         // NOTE: `.hidden()` must come *after* `.flex()`/`.flex_col()`. In GPUI
@@ -3350,6 +3492,9 @@ pub(super) fn sidebar_view(app: &MarkionApp, cx: &mut Context<MarkionApp>) -> Di
         .child(
             div()
                 .mb(px(PANE_OUTER_PADDING))
+                .p_1()
+                .rounded_lg()
+                .bg(glass(palette.surface_bg, 0.))
                 .flex()
                 .gap_1()
                 .child(
@@ -3358,14 +3503,20 @@ pub(super) fn sidebar_view(app: &MarkionApp, cx: &mut Context<MarkionApp>) -> Di
                         .flex()
                         .items_center()
                         .justify_center()
+                        .gap_2()
                         .px_2()
-                        .py_1()
-                        .rounded_md()
-                        .bg(files_bg)
+                        .py_2()
+                        .rounded_lg()
+                        .bg(if files_active {
+                            active_tab_bg
+                        } else {
+                            glass(files_bg, 0.)
+                        })
                         .text_size(px(12.))
                         .text_color(files_text)
                         .cursor_pointer()
                         .hover(move |style| style.bg(hover_bg))
+                        .child(crate::ui::icon::icon(Icon::Folder, 15., files_text))
                         .child(app.tr(Msg::LabelFiles))
                         .on_mouse_up(MouseButton::Left, {
                             let app_entity = app_entity.clone();
@@ -3382,14 +3533,20 @@ pub(super) fn sidebar_view(app: &MarkionApp, cx: &mut Context<MarkionApp>) -> Di
                         .flex()
                         .items_center()
                         .justify_center()
+                        .gap_2()
                         .px_2()
-                        .py_1()
-                        .rounded_md()
-                        .bg(outline_bg)
+                        .py_2()
+                        .rounded_lg()
+                        .bg(if outline_active {
+                            active_tab_bg
+                        } else {
+                            glass(outline_bg, 0.)
+                        })
                         .text_size(px(12.))
                         .text_color(outline_text)
                         .cursor_pointer()
                         .hover(move |style| style.bg(hover_bg))
+                        .child(crate::ui::icon::icon(Icon::FileText, 15., outline_text))
                         .child(app.tr(Msg::LabelOutline))
                         .on_mouse_up(MouseButton::Left, {
                             let app_entity = app_entity.clone();
@@ -4012,9 +4169,9 @@ pub(super) fn menu_title_button(
     hover_listener: impl Fn(&MouseMoveEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     let background = if active {
-        palette.active_bg
+        glass(palette.active_bg, 0.92)
     } else {
-        palette.panel_bg
+        glass(palette.panel_bg, 0.)
     };
     let foreground = if active {
         palette.active_text
@@ -4024,13 +4181,13 @@ pub(super) fn menu_title_button(
     let hover_bg = if active {
         palette.active_bg
     } else {
-        palette.surface_bg
+        glass(palette.active_bg, 0.55)
     };
 
     div()
-        .px_2()
+        .px_3()
         .py_1()
-        .rounded_md()
+        .rounded_lg()
         .bg(background)
         .text_size(px(13.))
         .text_color(foreground)
@@ -4038,6 +4195,33 @@ pub(super) fn menu_title_button(
         .hover(move |style| style.bg(hover_bg))
         .on_mouse_up(MouseButton::Left, click_listener)
         .on_mouse_move(hover_listener)
+        .child(label)
+}
+
+fn view_mode_pill(
+    label: &'static str,
+    active: bool,
+    palette: ThemePalette,
+    click_listener: impl Fn(&MouseUpEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    div()
+        .px_3()
+        .py_1()
+        .rounded_lg()
+        .bg(if active {
+            glass(palette.active_bg, 0.9)
+        } else {
+            glass(palette.panel_bg, 0.)
+        })
+        .text_size(px(12.))
+        .text_color(if active {
+            palette.active_text
+        } else {
+            palette.muted
+        })
+        .cursor_pointer()
+        .hover(move |style| style.bg(glass(palette.active_bg, 0.66)))
+        .on_mouse_up(MouseButton::Left, click_listener)
         .child(label)
 }
 
@@ -4842,6 +5026,8 @@ pub(super) fn file_tree_empty_state(
             .text_size(px(12.))
             .text_color(palette.muted)
             .text_center()
+            .gap_3()
+            .child(crate::ui::icon::icon(Icon::FolderOpen, 42., palette.muted))
             .child(app.tr(Msg::FileTreeEmptyState).to_string());
     }
 
@@ -5735,44 +5921,6 @@ fn preferences_appearance_body(
                                 .text_color(palette.muted)
                                 .child(app.tr(Msg::PrefPanelCodeSection)),
                         )
-                        .child(
-                            div()
-                                .w_full()
-                                .flex()
-                                .items_center()
-                                .justify_between()
-                                .text_size(px(12.))
-                                .px_1()
-                                .py_1()
-                                .gap_3()
-                                .child(
-                                    div()
-                                        .text_color(palette.muted)
-                                        .child(app.tr(Msg::PrefPanelCodeTheme)),
-                                )
-                                .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .gap_1()
-                                        .child(preference_option_button(
-                                            app.tr(Msg::PrefPanelCodeThemeLight).to_string(),
-                                            app.code_theme == CodeTheme::Light,
-                                            palette,
-                                            cx.listener(|app, _: &MouseUpEvent, _window, cx| {
-                                                app.set_code_theme(CodeTheme::Light, cx);
-                                            }),
-                                        ))
-                                        .child(preference_option_button(
-                                            app.tr(Msg::PrefPanelCodeThemeDark).to_string(),
-                                            app.code_theme == CodeTheme::Dark,
-                                            palette,
-                                            cx.listener(|app, _: &MouseUpEvent, _window, cx| {
-                                                app.set_code_theme(CodeTheme::Dark, cx);
-                                            }),
-                                        )),
-                                ),
-                        )
                         .child(preference_boolean_row(
                             app.tr(Msg::PrefPanelCodeLineNumbers),
                             app.code_line_numbers,
@@ -5883,7 +6031,91 @@ fn preferences_appearance_body(
                                         }),
                                 )
                         })
-                        .child(preference_font_row(app, FontSlot::Code, cx)),
+                        .child(preference_font_row(app, FontSlot::Code, cx))
+                        .child(
+                            div()
+                                .mt_3()
+                                .text_size(px(12.))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(palette.muted)
+                                .child(app.tr(Msg::PrefPanelVisualEffectsSection)),
+                        )
+                        .child(preference_boolean_row(
+                            app.tr(Msg::PrefPanelGlassEffect),
+                            app.glass_effect_enabled,
+                            app.language,
+                            palette,
+                            cx.listener(|app, _: &MouseUpEvent, window, cx| {
+                                app.toggle_glass_effect(window, cx);
+                            }),
+                        ))
+                        .child(preference_numeric_row(
+                            app.tr(Msg::PrefPanelTransparency),
+                            app.ui_opacity,
+                            MIN_UI_OPACITY,
+                            MAX_UI_OPACITY,
+                            "%",
+                            palette,
+                            cx.listener(|app, _: &MouseUpEvent, _window, cx| {
+                                if let Some(value) = preference_step_value(
+                                    app.ui_opacity,
+                                    MIN_UI_OPACITY,
+                                    MAX_UI_OPACITY,
+                                    -5,
+                                ) {
+                                    app.set_ui_opacity(value as i64, cx);
+                                }
+                            }),
+                            cx.listener(|app, _: &MouseUpEvent, _window, cx| {
+                                if let Some(value) = preference_step_value(
+                                    app.ui_opacity,
+                                    MIN_UI_OPACITY,
+                                    MAX_UI_OPACITY,
+                                    5,
+                                ) {
+                                    app.set_ui_opacity(value as i64, cx);
+                                }
+                            }),
+                        ))
+                        .child(preference_boolean_row(
+                            app.tr(Msg::PrefPanelParticleEffects),
+                            app.particle_effects_enabled,
+                            app.language,
+                            palette,
+                            cx.listener(|app, _: &MouseUpEvent, _window, cx| {
+                                app.toggle_particle_effects(cx);
+                            }),
+                        ))
+                        .when(app.particle_effects_enabled, |section| {
+                            section.child(preference_numeric_row(
+                                app.tr(Msg::PrefPanelParticleIntensity),
+                                app.particle_intensity,
+                                MIN_PARTICLE_INTENSITY,
+                                MAX_PARTICLE_INTENSITY,
+                                "",
+                                palette,
+                                cx.listener(|app, _: &MouseUpEvent, _window, cx| {
+                                    if let Some(value) = preference_step_value(
+                                        app.particle_intensity,
+                                        MIN_PARTICLE_INTENSITY,
+                                        MAX_PARTICLE_INTENSITY,
+                                        -1,
+                                    ) {
+                                        app.set_particle_intensity(value as i64, cx);
+                                    }
+                                }),
+                                cx.listener(|app, _: &MouseUpEvent, _window, cx| {
+                                    if let Some(value) = preference_step_value(
+                                        app.particle_intensity,
+                                        MIN_PARTICLE_INTENSITY,
+                                        MAX_PARTICLE_INTENSITY,
+                                        1,
+                                    ) {
+                                        app.set_particle_intensity(value as i64, cx);
+                                    }
+                                }),
+                            ))
+                        }),
                 ),
         )
         .child(pane_scrollbar_view(

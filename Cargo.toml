@@ -57,10 +57,10 @@ ratex-types = "=0.1.13"
 name = "markion"
 version = "0.3.10"
 edition = "2024"
-description = "A Rust + GPUI Markdown editor."
+description = "Noven, a native Rust + GPUI Markdown note editor based on Markion."
 license = "MIT"
 authors = ["Willmove"]
-repository = "https://github.com/willmove/markion"
+repository = "https://github.com/glen-ruan/noven"
 
 [dependencies]
 anyhow = "1.0"
@@ -174,12 +174,12 @@ winresource = "0.1"
 # pipeline reads the richer `Packager.toml` instead; this block is kept so a
 # plain `cargo bundle` still works for local macOS .app builds.
 [package.metadata.bundle]
-name = "Markion"
-identifier = "dev.markion.app"
-icon = ["assets/markion.icns", "assets/markion.ico", "assets/markion.png"]
+name = "Noven"
+identifier = "io.github.noven.Editor"
+icon = ["assets/noven.icns", "assets/noven.ico", "assets/noven.png"]
 category = "Productivity"
-short_description = "A Markdown editor."
-long_description = "Markion is a Rust + GPUI Markdown editor with live preview, themes, and i18n."
+short_description = "A native Markdown note editor."
+long_description = "Noven is a native Rust + GPUI Markdown note editor based on the MIT-licensed Markion project."
 
 # Optimize dependencies (gpui in particular) even in debug builds. GPUI is a
 # heavily-generic, performance-sensitive GUI framework that is extremely slow
@@ -232,5 +232,3 @@ opt-level = 1
 lto = "thin"
 codegen-units = 1
 strip = true
-
-

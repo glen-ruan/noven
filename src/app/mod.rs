@@ -14,17 +14,18 @@ use std::{
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, Application, Bounds, ClickEvent, ClipboardEntry, ClipboardItem, Context,
-    CursorStyle, DefiniteLength, DispatchPhase, Div, DragMoveEvent, Element, ElementId,
-    ElementInputHandler, Empty, Entity, EntityInputHandler, ExternalPaths, FocusHandle, Focusable,
-    Font, FontFallbacks, FontFeatures, FontStyle, FontWeight, GlobalElementId, HighlightStyle,
-    Hitbox, HitboxBehavior, ImageFormat, ImageSource, KeyBinding, KeyDownEvent, LayoutId,
-    ListAlignment, ListState, Menu, MenuItem, MouseButton, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, PaintQuad, PathPromptOptions, Pixels, Point, PromptButton, PromptLevel,
-    RenderImage, Rgba, ScrollHandle, SharedString, Size, Stateful, StrikethroughStyle, Style,
-    StyledText, Subscription, TextLayout, TextRun, Timer, TitlebarOptions, UTF16Selection,
-    UnderlineStyle, Window, WindowBounds, WindowOptions, WrappedLine, actions, anchored, canvas,
-    div, fill, font, img, list, point, px, rgb, rgba, size,
+    Animation, AnimationExt, AnyElement, App, Application, Bounds, ClickEvent, ClipboardEntry,
+    ClipboardItem, Context, CursorStyle, DefiniteLength, DispatchPhase, Div, DragMoveEvent,
+    Element, ElementId, ElementInputHandler, Empty, Entity, EntityInputHandler, ExternalPaths,
+    FocusHandle, Focusable, Font, FontFallbacks, FontFeatures, FontStyle, FontWeight,
+    GlobalElementId, HighlightStyle, Hitbox, HitboxBehavior, ImageFormat, ImageSource, KeyBinding,
+    KeyDownEvent, LayoutId, ListAlignment, ListState, Menu, MenuItem, MouseButton, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, PaintQuad, PathPromptOptions, Pixels, Point, PromptButton,
+    PromptLevel, RenderImage, Rgba, ScrollHandle, SharedString, Size, Stateful, StrikethroughStyle,
+    Style, StyledText, Subscription, TextLayout, TextRun, Timer, TitlebarOptions, UTF16Selection,
+    UnderlineStyle, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations,
+    WindowOptions, WrappedLine, actions, anchored, canvas, div, fill, font, img, list, point, px,
+    rgb, rgba, size,
 };
 use markion::i18n::{GitMsg, git_t, git_tf};
 use markion::{
@@ -32,15 +33,16 @@ use markion::{
     BlockPlacement, BlockTarget, BlockTransform, CheckedMutation, CodeTheme,
     DEFAULT_CODE_FONT_FAMILY, DEFAULT_EDITOR_FONT_SIZE, DEFAULT_EDITOR_SPLIT_RATIO,
     DEFAULT_HEADING_MENU_MAX_LEVEL, DEFAULT_RENDERED_FONT_SIZE, DEFAULT_SIDEBAR_WIDTH,
-    DiskIdentity, DiskState, DocumentInstanceId, DocxImagePolicy, DocxPageSize,
+    DEFAULT_UI_OPACITY, DiskIdentity, DiskState, DocumentInstanceId, DocxImagePolicy, DocxPageSize,
     EXTENDED_HEADING_MENU_MAX_LEVEL, EmojiQuery, ExportBackendPreference, ExportFormat,
     ExportPreferences, ExternalCheckOutcome, FileTree, FileTreeEntry, FileTreeEntryKind,
     GitPreferences, HighlightKind, HighlightedSpan, HtmlAlign, HtmlImageDescriptor, HtmlImgLength,
     HtmlListMarker, HtmlPreviewPart, HtmlTableGrid, ImageAlignment, ImagePresentation,
     ImageSourceIdentity, InlineSpan, InlineStyle, Language, MAX_AUTO_SAVE_DELAY_SECS,
-    MAX_CODE_FONT_SIZE, MAX_EDITOR_FONT_SIZE, MAX_PARAGRAPH_SPACING, MAX_RENDERED_FONT_SIZE,
-    MIN_AUTO_SAVE_DELAY_SECS, MIN_CODE_FONT_SIZE, MIN_EDITOR_FONT_SIZE, MIN_PARAGRAPH_SPACING,
-    MIN_RENDERED_FONT_SIZE, MarkdownDocument, MarkdownFormat, MathLayoutStyle, Msg, MutationOrigin,
+    MAX_CODE_FONT_SIZE, MAX_EDITOR_FONT_SIZE, MAX_PARAGRAPH_SPACING, MAX_PARTICLE_INTENSITY,
+    MAX_RENDERED_FONT_SIZE, MAX_UI_OPACITY, MIN_AUTO_SAVE_DELAY_SECS, MIN_CODE_FONT_SIZE,
+    MIN_EDITOR_FONT_SIZE, MIN_PARAGRAPH_SPACING, MIN_PARTICLE_INTENSITY, MIN_RENDERED_FONT_SIZE,
+    MIN_UI_OPACITY, MarkdownDocument, MarkdownFormat, MathLayoutStyle, Msg, MutationOrigin,
     MutationReceipt, OrganizeCandidate, P0Msg, P1Msg, PdfPageSize, PreviewBlock,
     RecoveryInventoryEntry, RecoverySourceState, RichText, SYSTEM_UI_FONT_FAMILY, SearchMatchRange,
     SearchOptions, SearchPattern, SessionLayout, SessionState, ShortcutCategory, ShortcutPlatform,
@@ -62,12 +64,13 @@ use markion::{
     list_theme_definitions, load_app_preferences, load_recovery_file, load_session_state,
     markdown_reference, normalize_auto_save_delay_secs, normalize_code_font_size,
     normalize_editor_font_size, normalize_heading_menu_max_level, normalize_paragraph_spacing,
-    normalize_rendered_font_size, organize_candidates, p0_t, p0_tf, p1_t, p1_tf, pandoc_available,
-    read_document_source, reorder_block, resolve_font_family, resolve_html_img_display_size,
-    save_app_preferences, save_session_state, save_text_snapshot, save_theme_definition,
-    serialize_inline_image, serialize_inline_link, shortcut_catalog, sidebar_tab_label,
-    slash_command_edit, slash_query_at, t, table_column_flex_weights, task_checkbox_toggle, tf,
-    title_from_path, transform_block, validate_block_target, workspace_relative_path,
+    normalize_particle_intensity, normalize_rendered_font_size, normalize_ui_opacity,
+    organize_candidates, p0_t, p0_tf, p1_t, p1_tf, pandoc_available, read_document_source,
+    reorder_block, resolve_font_family, resolve_html_img_display_size, save_app_preferences,
+    save_session_state, save_text_snapshot, save_theme_definition, serialize_inline_image,
+    serialize_inline_link, shortcut_catalog, sidebar_tab_label, slash_command_edit, slash_query_at,
+    t, table_column_flex_weights, task_checkbox_toggle, tf, title_from_path, transform_block,
+    validate_block_target, workspace_relative_path,
 };
 use markion_git_sync::{
     BackgroundFetchScheduler, ExclusiveAdmission, GitOperationRegistry, PolicyStore, ReadEpoch,
@@ -198,14 +201,14 @@ actions!(
     ]
 );
 
-const MARKION_APP_ID: &str = "dev.markion.app";
-const MARKION_WINDOW_TITLE: &str = "Markion";
+const MARKION_APP_ID: &str = "io.github.noven.Editor";
+const MARKION_WINDOW_TITLE: &str = "Noven";
 
 const MAX_HISTORY_LEN: usize = 200;
 const MARKION_PROJECT_WEBSITE_URL: &str = "https://markion.app";
-const GITHUB_REPO_URL: &str = "https://github.com/willmove/markion";
-const GITHUB_ISSUES_URL: &str = "https://github.com/willmove/markion/issues/new";
-const GITHUB_DOCS_URL: &str = "https://github.com/willmove/markion#readme";
+const GITHUB_REPO_URL: &str = "https://github.com/glen-ruan/noven";
+const GITHUB_ISSUES_URL: &str = "https://github.com/glen-ruan/noven/issues/new";
+const GITHUB_DOCS_URL: &str = "https://github.com/glen-ruan/noven#readme";
 const KENHUANG_MARKDOWN_TUTORIAL_ZH_URL: &str = "https://kenhuang.com/markdown/";
 const KENHUANG_MARKDOWN_TUTORIAL_EN_URL: &str = "https://kenhuang.com/en/markdown/";
 
@@ -1578,6 +1581,52 @@ fn theme_palette_from_definition(theme: &ThemeDefinition) -> ThemePalette {
     theme_palette_from_colors(theme.colors)
 }
 
+/// Apply translucency without changing the hue supplied by the active theme.
+/// Keeping this at the presentation layer lets every built-in and custom theme
+/// participate in the same glass treatment automatically.
+fn glass(color: Rgba, alpha: f32) -> Rgba {
+    Rgba {
+        a: alpha.clamp(0., 1.),
+        ..color
+    }
+}
+
+/// Give translucent surfaces enough separation to read as layered glass.
+/// Dark themes receive a subtle smoked tint and light themes a soft white
+/// lift; the source hue still comes entirely from the active theme.
+fn frosted(color: Rgba, alpha: f32, tint: f32) -> Rgba {
+    let luminance = color.r * 0.2126 + color.g * 0.7152 + color.b * 0.0722;
+    let tint_color = if luminance > 0.5 {
+        rgb(0xffffff)
+    } else {
+        rgb(0x000000)
+    };
+    glass(
+        color.blend(Rgba {
+            a: tint.clamp(0., 1.),
+            ..tint_color
+        }),
+        alpha,
+    )
+}
+
+// Glass layers are deliberately separated. A nearly opaque root combined
+// with nearly opaque child cards compounds to a flat solid color, which is
+// especially noticeable on composited Linux desktops. These values leave a
+// stable contrast veil at the window level while allowing the wallpaper to
+// remain visible through the main workspace and its nested components.
+const ROOT_GLASS_ALPHA: f32 = 0.46;
+const CHROME_GLASS_ALPHA: f32 = 0.56;
+const CONTENT_GLASS_ALPHA: f32 = 0.64;
+const COMPONENT_GLASS_ALPHA: f32 = 0.68;
+const EMPHASIS_GLASS_ALPHA: f32 = 0.76;
+const CONTROL_GLASS_ALPHA: f32 = 0.48;
+
+fn scaled_glass_alpha(base: f32, ui_opacity: u16) -> f32 {
+    let normalized = normalize_ui_opacity(ui_opacity as i64) as f32 / DEFAULT_UI_OPACITY as f32;
+    (base * normalized).clamp(0.08, 0.96)
+}
+
 fn theme_palette_from_colors(colors: ThemeColors) -> ThemePalette {
     let active_bg = rgb(colors.active_bg);
     ThemePalette {
@@ -1609,11 +1658,11 @@ fn theme_palette_from_colors(colors: ThemeColors) -> ThemePalette {
 /// divider is 1px, but a hit target that thin is nearly impossible to grab, so
 /// we overlay a wider transparent handle on top of it (mirrors Zed's split view).
 const RESIZE_HANDLE_WIDTH: f32 = 8.;
-const PANE_OUTER_PADDING: f32 = 0.;
+const PANE_OUTER_PADDING: f32 = 10.;
 const PANE_INNER_PADDING: f32 = 9.;
 const PREVIEW_SCROLLBAR_SAFE_RIGHT_PADDING: f32 =
     PANE_INNER_PADDING + PANE_SCROLLBAR_RESERVED_WIDTH;
-const SIDEBAR_COMPACT_PADDING: f32 = 2.5;
+const SIDEBAR_COMPACT_PADDING: f32 = 10.;
 const OUTLINE_ROW_VERTICAL_PADDING: f32 = 1.;
 const OUTLINE_ROW_LINE_HEIGHT: f32 = 17.;
 const OUTLINE_ROW_GAP: f32 = 0.;
@@ -2334,6 +2383,10 @@ struct MarkionApp {
     code_theme: CodeTheme,
     code_long_line_wrap: bool,
     code_font_size: Option<u16>,
+    glass_effect_enabled: bool,
+    ui_opacity: u16,
+    particle_effects_enabled: bool,
+    particle_intensity: u16,
     preview_adaptive_width: bool,
     editor_font_size: u16,
     rendered_font_size: u16,

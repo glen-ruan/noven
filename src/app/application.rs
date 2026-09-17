@@ -171,6 +171,7 @@ impl MarkionApp {
                 (!name.is_empty()).then(|| name.to_string())
             })
             .unwrap_or_else(|| "Paper".to_string());
+        let language = Language::from_code(&preferences.language);
         let app = Self {
             tabs: vec![initial_tab],
             active_tab: 0,
@@ -183,7 +184,7 @@ impl MarkionApp {
             about_dialog_open: false,
             markdown_reference_open: false,
             markdown_reference_scroll: ScrollHandle::new(),
-            status: t(Language::default(), Msg::StatusReady).into(),
+            status: t(language, Msg::StatusReady).into(),
             applied_window_title: None,
             publishing_service: None,
             docx_import: docx_import::DocxImportCoordinator::default(),
@@ -222,6 +223,10 @@ impl MarkionApp {
             code_theme: preferences.code_theme,
             code_long_line_wrap: preferences.code_long_line_wrap,
             code_font_size: preferences.code_font_size,
+            glass_effect_enabled: preferences.glass_effect_enabled,
+            ui_opacity: preferences.ui_opacity,
+            particle_effects_enabled: preferences.particle_effects_enabled,
+            particle_intensity: preferences.particle_intensity,
             preview_adaptive_width: preferences.preview_adaptive_width,
             editor_font_size: preferences.editor_font_size,
             rendered_font_size: preferences.rendered_font_size,
@@ -237,7 +242,7 @@ impl MarkionApp {
             show_hidden_files: preferences.show_hidden_files,
             open_in_current_tab: preferences.open_in_current_tab,
             markdown_auto_pair: preferences.markdown_auto_pair,
-            language: Language::from_code(&preferences.language),
+            language,
             check_for_updates_on_startup: preferences.check_for_updates_on_startup,
             last_update_check: preferences.last_update_check,
             view_mode: ViewMode::default_mode(),
@@ -1919,6 +1924,10 @@ impl MarkionApp {
             code_theme: self.code_theme,
             code_long_line_wrap: self.code_long_line_wrap,
             code_font_size: self.code_font_size,
+            glass_effect_enabled: self.glass_effect_enabled,
+            ui_opacity: self.ui_opacity,
+            particle_effects_enabled: self.particle_effects_enabled,
+            particle_intensity: self.particle_intensity,
             preview_adaptive_width: self.preview_adaptive_width,
             editor_font_size: self.editor_font_size,
             rendered_font_size: self.rendered_font_size,

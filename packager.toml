@@ -40,27 +40,27 @@
 #   so adding one breaks `cargo packager` immediately. Updater metadata and its
 #   signature are produced by the workflow, not this packager config.
 
-product-name = "Markion"
+product-name = "Noven"
 # `name` is the internal app/package identifier. Setting it explicitly is
 # IMPORTANT: when omitted, cargo-packager tries to auto-derive it by walking
 # the config file's parent (find_nearset_pkg_name), which does an unsafe
 # set_current_dir() on the config *file path* and errors "Not a directory".
 # Providing `name` skips that buggy path entirely.
-name = "markion"
-identifier = "dev.markion.app"
+name = "rusttext"
+identifier = "io.github.noven.Editor"
 version = "0.3.10"
 category = "Productivity"
-publisher = "Willmove"
-homepage = "https://github.com/willmove/markion"
-description = "A Rust + GPUI Markdown editor with live preview, themes, and i18n."
-long-description = "Markion is a Rust + GPUI Markdown editor with live preview, themes, and i18n."
+publisher = "Noven contributors"
+homepage = "https://github.com/glen-ruan/noven"
+description = "A native Rust + GPUI Markdown note editor with live preview, themes, and i18n."
+long-description = "Noven is based on the MIT-licensed Markion editor and ships Chinese-friendly appearance defaults."
 
 # All three icon files; the packager picks the right one per format
 # (.ico → nsis/wix, .icns → app/dmg, .png → deb/appimage).
 icons = [
-    "assets/markion.ico",
-    "assets/markion.icns",
-    "assets/markion.png",
+    "assets/noven.ico",
+    "assets/noven.icns",
+    "assets/noven.png",
 ]
 # Non-binary files bundled alongside the app (logo, icons for reuse).
 resources = ["assets", "THIRD_PARTY_NOTICES.md"]
@@ -104,6 +104,7 @@ generate-desktop-entry = true
 depends = [
     "libwayland-client0",
     "libxkbcommon0",
+    "libxkbcommon-x11-0",
     "libxcb1",
     "libvulkan1",
     "libfontconfig1",

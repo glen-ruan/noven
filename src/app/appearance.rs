@@ -122,6 +122,10 @@ impl MarkionApp {
                     app.code_theme = preferences.code_theme;
                     app.code_long_line_wrap = preferences.code_long_line_wrap;
                     app.code_font_size = preferences.code_font_size;
+                    app.glass_effect_enabled = preferences.glass_effect_enabled;
+                    app.ui_opacity = preferences.ui_opacity;
+                    app.particle_effects_enabled = preferences.particle_effects_enabled;
+                    app.particle_intensity = preferences.particle_intensity;
                     app.preview_adaptive_width = preferences.preview_adaptive_width;
                     app.editor_font_size = preferences.editor_font_size;
                     app.rendered_font_size = preferences.rendered_font_size;
@@ -217,23 +221,85 @@ impl MarkionApp {
         cx.notify();
     }
 
-    /// Selects the Light/Dark code display theme. Presentation-only: the
-    /// palette is applied at render time, so no measurement invalidation is
-    /// needed.
-    pub(super) fn set_code_theme(&mut self, theme: CodeTheme, cx: &mut Context<Self>) {
-        if self.code_theme == theme {
-            return;
+    /// Code syntax colors follow the active application theme. The persisted
+    /// `code_theme` field remains readable for config compatibility, but it no
+    /// longer creates a second independent color system in Appearance.
+    pub(super) fn effective_code_theme(&self) -> CodeTheme {
+        if self.active_theme_definition().is_dark {
+            CodeTheme::Dark
+        } else {
+            CodeTheme::Light
         }
-        self.code_theme = theme;
-        self.status = t(
-            self.language,
-            if theme == CodeTheme::Light {
-                Msg::StatusCodeThemeLight
+    }
+
+    pub(super) fn glass_alpha(&self, base: f32) -> f32 {
+        scaled_glass_alpha(base, self.ui_opacity)
+    }
+
+    pub(super) fn glass_surface(&self, color: Rgba, base: f32, tint: f32) -> Rgba {
+        let alpha = self.glass_alpha(base);
+        if self.glass_effect_enabled {
+            frosted(color, alpha, tint)
+        } else {
+            glass(color, alpha)
+        }
+    }
+
+    pub(super) fn toggle_glass_effect(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.glass_effect_enabled = !self.glass_effect_enabled;
+        window.set_background_appearance(if self.glass_effect_enabled {
+            WindowBackgroundAppearance::Blurred
+        } else {
+            WindowBackgroundAppearance::Transparent
+        });
+        self.status = format!(
+            "{}: {}",
+            self.tr(Msg::PrefPanelGlassEffect),
+            self.tr(if self.glass_effect_enabled {
+                Msg::PrefOn
             } else {
-                Msg::StatusCodeThemeDark
-            },
+                Msg::PrefOff
+            })
         )
         .into();
+        self.persist_preferences();
+        cx.notify();
+    }
+
+    pub(super) fn set_ui_opacity(&mut self, value: i64, cx: &mut Context<Self>) {
+        let value = normalize_ui_opacity(value);
+        if self.ui_opacity == value {
+            return;
+        }
+        self.ui_opacity = value;
+        self.status = format!("{}: {value}%", self.tr(Msg::PrefPanelTransparency)).into();
+        self.persist_preferences();
+        cx.notify();
+    }
+
+    pub(super) fn toggle_particle_effects(&mut self, cx: &mut Context<Self>) {
+        self.particle_effects_enabled = !self.particle_effects_enabled;
+        self.status = format!(
+            "{}: {}",
+            self.tr(Msg::PrefPanelParticleEffects),
+            self.tr(if self.particle_effects_enabled {
+                Msg::PrefOn
+            } else {
+                Msg::PrefOff
+            })
+        )
+        .into();
+        self.persist_preferences();
+        cx.notify();
+    }
+
+    pub(super) fn set_particle_intensity(&mut self, value: i64, cx: &mut Context<Self>) {
+        let value = normalize_particle_intensity(value);
+        if self.particle_intensity == value {
+            return;
+        }
+        self.particle_intensity = value;
+        self.status = format!("{}: {value}", self.tr(Msg::PrefPanelParticleIntensity)).into();
         self.persist_preferences();
         cx.notify();
     }

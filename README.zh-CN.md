@@ -14,7 +14,7 @@ Markion 是一款使用 Rust 和 GPUI 构建的原生桌面 Markdown 编辑器�
 
 ## 安装
 
-请从 [GitHub Releases](https://github.com/willmove/markion/releases) 下载最新版本。
+请从 [GitHub Releases](https://github.com/glen-ruan/noven/releases) 下载最新版本。
 
 | 平台 | 发布包 | 目标架构 |
 |---|---|---|

@@ -386,14 +386,32 @@ pub(super) fn run() {
     run_with_startup_intent(StartupOpenIntent::from_env_args());
 }
 
+#[cfg(target_os = "linux")]
+fn prefer_x11_for_native_decorations() {
+    if std::env::var_os("DISPLAY").is_some()
+        && std::env::var("RUSTTEXT_USE_WAYLAND").as_deref() != Ok("1")
+    {
+        // This runs before GPUI or any application worker thread starts. X11
+        // lets the user's window manager own the titlebar, controls, dragging,
+        // resizing, shadows, and rounded corners. Native Wayland remains an
+        // explicit opt-in for environments that need it.
+        unsafe { std::env::remove_var("WAYLAND_DISPLAY") };
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn prefer_x11_for_native_decorations() {}
+
 pub(super) fn run_with_startup_intent(startup_intent: StartupOpenIntent) {
-    // Diagnostic file logging (daily rotation in the Markion log dir). Failures
+    prefer_x11_for_native_decorations();
+
+    // Diagnostic file logging (daily rotation in the Noven log dir). Failures
     // are non-fatal: the editor starts without file logging.
     let log_dir = markion::init_logging();
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),
         log_dir = ?log_dir,
-        "Markion starting"
+        "Noven starting"
     );
 
     // Load the syntect grammar registry off the main thread so the first
@@ -426,11 +444,13 @@ pub(super) fn run_with_startup_intent(startup_intent: StartupOpenIntent) {
                     }),
                     window_bounds: Some(window_bounds),
                     app_id: Some(MARKION_APP_ID.to_string()),
+                    window_decorations: Some(WindowDecorations::Server),
+                    window_background: WindowBackgroundAppearance::Blurred,
                     ..Default::default()
                 },
                 |_, cx| cx.new(MarkionApp::new),
             )
-            .expect("failed to open the Markion main window");
+            .expect("failed to open the Noven main window");
 
         let startup_intent = startup_intent.clone();
         window

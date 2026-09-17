@@ -3398,6 +3398,7 @@ fn builtin_theme_table_exposes_popular_themes_with_unique_names() {
     );
     // Requested popular themes are present.
     for expected in [
+        "Noven Jade",
         "GitHub Light",
         "Solarized Light",
         "One Light",
@@ -3408,6 +3409,23 @@ fn builtin_theme_table_exposes_popular_themes_with_unique_names() {
             "missing built-in theme {expected}"
         );
     }
+    let noven = themes
+        .iter()
+        .find(|theme| theme.name == "Noven Jade")
+        .expect("Noven distribution theme");
+    assert!(noven.is_dark);
+    assert_eq!(
+        noven.fonts.editor.as_deref(),
+        Some("Noto Sans Mono CJK SC")
+    );
+    assert_eq!(
+        noven.fonts.rendered.as_deref(),
+        Some("Noto Serif CJK SC")
+    );
+    assert_eq!(
+        noven.fonts.code.as_deref(),
+        Some("Noto Sans Mono CJK SC")
+    );
     // Names are unique.
     let mut sorted: Vec<&str> = themes.iter().map(|t| t.name.as_str()).collect();
     sorted.sort_unstable();
@@ -3612,6 +3630,13 @@ fn preferences_panel_renders_and_wires_the_appearance_tab() {
     assert!(appearance_body.contains("Msg::PrefPanelThemeSection"));
     assert!(appearance_body.contains("Msg::PrefPanelTypographySection"));
     assert!(appearance_body.contains("app.apply_theme_by_name("));
+    assert!(appearance_body.contains("Msg::PrefPanelCodeSection"));
+    assert!(
+        !appearance_body.contains("Msg::PrefPanelCodeThemeLight")
+            && !appearance_body.contains("Msg::PrefPanelCodeThemeDark")
+            && !appearance_body.contains("set_code_theme"),
+        "code colors must follow the active app theme without a second selector"
+    );
     assert!(appearance_body.contains("id(\"preferences-appearance-body\")"));
     assert!(appearance_body.contains("PaneScrollTarget::PreferencesAppearance"));
     assert!(appearance_body.contains("preference_font_row(app, FontSlot::Editor, cx)"));
@@ -3870,6 +3895,25 @@ fn chrome_layout_io_does_not_touch_document_caches() {
         include_str!("state.rs").contains("fn should_restore_session"),
         "document/workspace restore stays gated by CLI intent"
     );
+}
+
+#[test]
+fn linux_system_chrome_owns_window_controls_and_launcher_prefers_x11() {
+    let bootstrap = include_str!("bootstrap.rs");
+    assert!(bootstrap.contains("window_decorations: Some(WindowDecorations::Server)"));
+    assert!(bootstrap.contains("window_background: WindowBackgroundAppearance::Blurred"));
+    assert!(bootstrap.contains("fn prefer_x11_for_native_decorations()"));
+    assert!(bootstrap.contains("std::env::remove_var(\"WAYLAND_DISPLAY\")"));
+    assert!(bootstrap.contains("prefer_x11_for_native_decorations();"));
+
+    let root_view = include_str!("root_view.rs");
+    assert!(!root_view.contains("window-titlebar"));
+    assert!(!root_view.contains("window-close"));
+
+    let launcher = include_str!("../../packaging/linux/rusttext");
+    assert!(launcher.contains("unset WAYLAND_DISPLAY"));
+    assert!(launcher.contains("RUSTTEXT_USE_WAYLAND"));
+    assert!(launcher.contains("/usr/lib/rusttext/rusttext-bin"));
 }
 
 #[gpui::test]
@@ -5349,7 +5393,7 @@ fn markdown_reference_tutorial_link_opens_url_and_keeps_overlay_open(cx: &mut Te
     cx.run_until_parked();
     assert_eq!(
         cx.opened_url().as_deref(),
-        Some(KENHUANG_MARKDOWN_TUTORIAL_EN_URL)
+        Some(KENHUANG_MARKDOWN_TUTORIAL_ZH_URL)
     );
     app.update(cx, |app, _| {
         assert!(app.markdown_reference_open);
@@ -5389,9 +5433,9 @@ fn markdown_reference_tutorial_link_uses_chinese_url_for_zh_hans(cx: &mut TestAp
 #[test]
 #[allow(clippy::assertions_on_constants)]
 fn pane_density_and_scrollbar_constants_stay_compact_and_usable() {
-    assert!(
-        PANE_OUTER_PADDING <= 16. * 0.20,
-        "outer pane padding should stay close to the requested 15% density target"
+    assert_eq!(
+        PANE_OUTER_PADDING, 10.,
+        "glass surfaces need a visible gutter to preserve their rounded silhouette"
     );
     assert!(
         PANE_INNER_PADDING < 16.,
@@ -10472,6 +10516,126 @@ fn custom_theme_palette_uses_definition_colors() {
     assert_eq!(palette.active_text, rgb(0x717273));
 }
 
+#[test]
+fn frosted_surfaces_keep_custom_theme_hue_and_requested_alpha() {
+    let dark = rgb(0x123a42);
+    let light = rgb(0xdde7e4);
+    let dark_glass = frosted(dark, 0.72, 0.1);
+    let light_glass = frosted(light, 0.68, 0.1);
+
+    assert_eq!(dark_glass.a, 0.72);
+    assert_eq!(light_glass.a, 0.68);
+    assert!(dark_glass.r < dark.r && dark_glass.g < dark.g && dark_glass.b < dark.b);
+    assert!(light_glass.r > light.r && light_glass.g > light.g && light_glass.b > light.b);
+}
+
+#[test]
+fn workspace_glass_layers_do_not_compound_into_an_opaque_sheet() {
+    let effective_content_alpha = 1.0 - (1.0 - ROOT_GLASS_ALPHA) * (1.0 - CONTENT_GLASS_ALPHA);
+
+    assert!(ROOT_GLASS_ALPHA < CHROME_GLASS_ALPHA);
+    assert!(CHROME_GLASS_ALPHA < CONTENT_GLASS_ALPHA);
+    assert!(CONTENT_GLASS_ALPHA <= COMPONENT_GLASS_ALPHA);
+    assert!(COMPONENT_GLASS_ALPHA < EMPHASIS_GLASS_ALPHA);
+    assert!(CONTROL_GLASS_ALPHA < CONTENT_GLASS_ALPHA);
+    assert!(
+        effective_content_alpha < 0.82,
+        "root and content glass must leave the desktop visibly present"
+    );
+    assert!(
+        effective_content_alpha > 0.72,
+        "content glass still needs a readable contrast veil"
+    );
+}
+
+#[test]
+fn sidebar_uses_the_document_surface_while_tree_rows_only_fill_interaction_states() {
+    let root = include_str!("root_view.rs");
+    let sidebar = root
+        .split("pub(super) fn sidebar_view")
+        .nth(1)
+        .and_then(|source| source.split("fn pane_scrollbar_view").next())
+        .expect("sidebar source section");
+    assert!(sidebar.contains("app.glass_surface(palette.surface_bg, CONTENT_GLASS_ALPHA, 0.16)"));
+    assert!(sidebar.contains(".border_1()"));
+    assert!(sidebar.contains(".border_color(palette.border)"));
+    assert!(sidebar.contains(".shadow_md()"));
+
+    let tree_row = root
+        .split("fn file_tree_entry_row")
+        .nth(1)
+        .and_then(|source| source.split("pub(super) fn file_tree_panel_body").next())
+        .expect("file tree row source section");
+    assert!(tree_row.contains("glass(palette.panel_bg, 0.)"));
+    assert!(tree_row.contains("scaled_glass_alpha(0.58, ui_opacity)"));
+}
+
+#[test]
+fn code_blocks_follow_theme_chrome_and_keep_only_syntax_token_palettes() {
+    let appearance = include_str!("appearance.rs");
+    assert!(appearance.contains("fn effective_code_theme"));
+    assert!(appearance.contains("self.active_theme_definition().is_dark"));
+    assert!(!appearance.contains("fn set_code_theme"));
+
+    let preview = include_str!("preview.rs");
+    let code_block = preview
+        .split("fn code_block_view")
+        .nth(1)
+        .and_then(|source| source.split("pub(super) fn preview_block_view").next())
+        .expect("code block source section");
+    assert!(code_block.contains("app.glass_surface("));
+    assert!(code_block.contains("theme.surface_bg"));
+    assert!(code_block.contains("COMPONENT_GLASS_ALPHA"));
+    assert!(code_block.contains(".border_color(theme.border)"));
+    assert!(code_block.contains(".shadow_md()"));
+    assert!(!code_block.contains(".bg(palette.bg)"));
+}
+
+#[test]
+fn noven_linux_launcher_matches_window_identity_and_installed_icon() {
+    let desktop = include_str!("../../packaging/linux/rusttext.desktop");
+    assert!(desktop.contains("Name=Noven\n"));
+    assert!(desktop.contains("Exec=rusttext %F\n"));
+    assert!(desktop.contains("Icon=noven\n"));
+    assert!(desktop.contains("StartupWMClass=io.github.noven.Editor\n"));
+    assert!(desktop.contains("MimeType=text/markdown;text/plain;\n"));
+
+    let app = include_str!("mod.rs");
+    assert!(app.contains("const MARKION_APP_ID: &str = \"io.github.noven.Editor\""));
+    assert!(app.contains("const MARKION_WINDOW_TITLE: &str = \"Noven\""));
+
+    let icon = image::load_from_memory(include_bytes!("../../assets/noven.png"))
+        .expect("Noven PNG icon must decode");
+    assert_eq!((icon.width(), icon.height()), (512, 512));
+    image::load_from_memory(include_bytes!(
+        "../../packaging/linux/icons/hicolor/32x32/apps/noven.png"
+    ))
+    .expect("Noven 32px Dock icon must decode");
+}
+
+#[test]
+fn preview_component_chrome_has_no_fixed_light_table_or_expanded_panel_palette() {
+    let preview = include_str!("preview.rs");
+    for fixed_light_color in [
+        "rgb(0xffffff)",
+        "rgb(0xf8fafc)",
+        "rgb(0xf1f5f9)",
+        "rgb(0xe2e8f0)",
+        "rgb(0xcbd5e1)",
+        "rgb(0x94a3b8)",
+        "rgb(0x64748b)",
+        "rgb(0x475569)",
+        "rgb(0x334155)",
+    ] {
+        assert!(
+            !preview.contains(fixed_light_color),
+            "preview chrome must derive {fixed_light_color} from the active theme"
+        );
+    }
+    assert!(preview.contains("frosted(palette.surface_bg"));
+    assert!(preview.contains("visual_highlight_style_for_palette"));
+}
+
 #[gpui::test]
 fn font_family_change_is_presentation_only_and_invalidates_measured_height(
     cx: &mut TestAppContext,
@@ -10479,9 +10643,9 @@ fn font_family_change_is_presentation_only_and_invalidates_measured_height(
     let (app, cx) = cx.add_window_view(|_, cx| MarkionApp::new(cx));
 
     app.update(cx, |app, _| {
-        assert_eq!(app.resolved_font_families.editor, SYSTEM_UI_FONT_FAMILY);
-        assert_eq!(app.resolved_font_families.rendered, SYSTEM_UI_FONT_FAMILY);
-        assert_eq!(app.resolved_font_families.code, DEFAULT_CODE_FONT_FAMILY);
+        assert_eq!(app.resolved_font_families.editor, "Noto Sans Mono CJK SC");
+        assert_eq!(app.resolved_font_families.rendered, "Noto Serif CJK SC");
+        assert_eq!(app.resolved_font_families.code, "Noto Sans Mono CJK SC");
     });
 
     // Seed a measured-height cache entry as if a layout pass had run at the
@@ -10494,7 +10658,7 @@ fn font_family_change_is_presentation_only_and_invalidates_measured_height(
                 wrap_width: px(400.),
                 font_size: px(14.),
                 line_height: px(22.4),
-                font_family: SYSTEM_UI_FONT_FAMILY.into(),
+                font_family: "Noto Sans Mono CJK SC".into(),
             },
             px(1000.),
         ));
@@ -10518,9 +10682,9 @@ fn font_family_change_is_presentation_only_and_invalidates_measured_height(
             "a cached height measured in the old family must not survive"
         );
 
-        // Clearing back to follow-theme restores the default family.
+        // Clearing back to follow-theme restores the Noven theme family.
         app.set_font_family(FontSlot::Editor, None, cx);
-        assert_eq!(app.resolved_font_families.editor, SYSTEM_UI_FONT_FAMILY);
+        assert_eq!(app.resolved_font_families.editor, "Noto Sans Mono CJK SC");
     });
 }
 
@@ -10558,7 +10722,7 @@ fn font_picker_toggles_and_choice_applies_and_closes(cx: &mut TestAppContext) {
         app.choose_font_family(FontSlot::Code, None, cx);
         assert_eq!(app.font_picker, None);
         assert!(app.code_font_family.is_none());
-        assert_eq!(app.resolved_font_families.code, DEFAULT_CODE_FONT_FAMILY);
+        assert_eq!(app.resolved_font_families.code, "Noto Sans Mono CJK SC");
     });
 }
 
@@ -11921,6 +12085,12 @@ fn workspace_layout_places_sidebar_beside_document_stack_and_scopes_drags() {
         .expect("document content row");
     assert!(tab_band < content_row);
     assert!(document_stack[content_row..].contains("on_drag_move::<DraggedEditorSplitHandle>"));
+
+    let menu_bar = &root_view[..workspace_start];
+    assert!(menu_bar.contains("view_mode_pill("));
+    assert!(menu_bar.contains(".border_l_1()"));
+    assert!(menu_bar.contains(".overflow_x_scroll()"));
+    assert!(!root_view.contains("document-view-toolbar"));
 
     let editing = include_str!("editing.rs");
     let tab_bar = editing
@@ -13582,8 +13752,8 @@ fn gpui_tests_start_from_documented_preference_defaults(cx: &mut TestAppContext)
         assert_eq!(prefs.editor_font_size, DEFAULT_EDITOR_FONT_SIZE);
         assert_eq!(prefs.rendered_font_size, DEFAULT_RENDERED_FONT_SIZE);
         assert_eq!(prefs.paragraph_spacing, markion::DEFAULT_PARAGRAPH_SPACING);
-        assert_eq!(prefs.theme, "Paper");
-        assert_eq!(prefs.language, "en");
+        assert_eq!(prefs.theme, "Noven Jade");
+        assert_eq!(prefs.language, "zh-hans");
         assert_eq!(app.preferences_path, default_preferences_path());
     });
 }
@@ -17957,20 +18127,20 @@ fn window_title_follows_active_tab_and_dirty_state(cx: &mut TestAppContext) {
     let (app, cx) = cx.add_window_view(|_, cx| MarkionApp::new(cx));
 
     app.update_in(cx, |app, window, _| {
-        assert_eq!(app.desired_window_title(), "Markion - Untitled.md");
+        assert_eq!(app.desired_window_title(), "Noven - Untitled.md");
         app.sync_window_title(window);
         assert!(
             !app.sync_window_title(window),
             "unchanged identity must not hit the platform again"
         );
     });
-    assert_eq!(cx.window_title().as_deref(), Some("Markion - Untitled.md"));
+    assert_eq!(cx.window_title().as_deref(), Some("Noven - Untitled.md"));
 
     app.update_in(cx, |app, window, _| {
         let version = app.active_tab().document.version();
         app.active_tab_mut().document.insert(0, "x");
         assert!(app.active_tab().is_dirty());
-        assert_eq!(app.desired_window_title(), "Markion - Untitled.md *");
+        assert_eq!(app.desired_window_title(), "Noven - Untitled.md *");
         assert!(app.sync_window_title(window));
         assert!(!app.sync_window_title(window));
         assert_eq!(
@@ -17981,26 +18151,26 @@ fn window_title_follows_active_tab_and_dirty_state(cx: &mut TestAppContext) {
     });
     assert_eq!(
         cx.window_title().as_deref(),
-        Some("Markion - Untitled.md *")
+        Some("Noven - Untitled.md *")
     );
 
     app.update_in(cx, |app, window, cx| {
         let named = MarkdownDocument::recovered("two", Some(PathBuf::from("notes.md")));
         app.open_in_new_tab(named, cx);
-        assert_eq!(app.desired_window_title(), "Markion - notes.md *");
+        assert_eq!(app.desired_window_title(), "Noven - notes.md *");
         assert!(app.sync_window_title(window));
     });
-    assert_eq!(cx.window_title().as_deref(), Some("Markion - notes.md *"));
+    assert_eq!(cx.window_title().as_deref(), Some("Noven - notes.md *"));
 
     app.update_in(cx, |app, window, cx| {
         app.switch_active_tab(0, cx);
-        assert_eq!(app.desired_window_title(), "Markion - Untitled.md *");
+        assert_eq!(app.desired_window_title(), "Noven - Untitled.md *");
         assert!(app.sync_window_title(window));
         assert!(!app.sync_window_title(window));
     });
     assert_eq!(
         cx.window_title().as_deref(),
-        Some("Markion - Untitled.md *")
+        Some("Noven - Untitled.md *")
     );
 }
 
@@ -18230,17 +18400,17 @@ fn localized_status_context_preserves_values_and_transient_feedback() {
 
 #[test]
 fn window_title_formats_brand_filename_and_dirty_marker() {
-    assert_eq!(window_title("notes.md", false), "Markion - notes.md");
-    assert_eq!(window_title("notes.md", true), "Markion - notes.md *");
+    assert_eq!(window_title("notes.md", false), "Noven - notes.md");
+    assert_eq!(window_title("notes.md", true), "Noven - notes.md *");
     assert_eq!(
         window_title(markion::title_from_path(None).as_ref(), false),
-        "Markion - Untitled.md"
+        "Noven - Untitled.md"
     );
     assert_eq!(
         window_title(markion::title_from_path(None).as_ref(), true),
-        "Markion - Untitled.md *"
+        "Noven - Untitled.md *"
     );
-    assert_eq!(window_title("photo.png", false), "Markion - photo.png");
+    assert_eq!(window_title("photo.png", false), "Noven - photo.png");
     assert!(!window_title("photo.png", false).contains('*'));
 }
 

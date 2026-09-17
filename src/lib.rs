@@ -44,13 +44,13 @@ pub use inline_edit::{
     serialize_inline_image, serialize_inline_link,
 };
 
-/// Markdown shown in the first in-memory document when Markion starts.
+/// Markdown shown in the first in-memory document when Noven starts.
 ///
 /// This is document content rather than localized UI chrome, so it stays in
 /// English regardless of the selected application language.
-pub const DEFAULT_WELCOME_MARKDOWN: &str = r#"# Welcome to Markion
+pub const DEFAULT_WELCOME_MARKDOWN: &str = r#"# Welcome to Noven
 
-This starter document is a quick tour of Markdown in Markion. Edit the source on the left and see the preview update on the right.
+This starter document is a quick tour of Markdown in Noven. Edit the source on the left and see the preview update on the right.
 
 ## Heading hierarchy
 
@@ -66,7 +66,7 @@ This starter document is a quick tour of Markdown in Markion. Edit the source on
 
 Write with *italic*, **bold**, ***bold italic***, ~~strikethrough~~, `inline code`, ==highlighted text==, H~2~O, and x^2^. Visit the [Markion project page](https://github.com/willmove/markion), or use the reference link below.[^links]
 
-![Markion logo](assets/markion.png "Markion")
+![Noven logo](assets/noven.png "Noven")
 
 ## Quotes and lists
 
@@ -122,12 +122,12 @@ Raw HTML tables render as a grid, including cells that span columns or rows.
 <li>HTML list item</li>
 <li>Another item</li>
 </ul>
-<p align="center"><img src="assets/markion.png" alt="Markion logo" width="128" height="128"></p>
+<p align="center"><img src="assets/noven.png" alt="Noven logo" width="128" height="128"></p>
 </div>
 
 ## Code and math
 
-Use `cargo run` to start Markion locally.
+Use Noven to keep notes, code, and formulas together.
 
 ```rust
 fn greeting(name: &str) -> String {
@@ -154,19 +154,20 @@ pub use model::{
     AlertKind, AppPreferences, AutoSavePreferences, AutosaveOutcome, CodeTheme,
     DATA_URI_IDENTITY_HASH_BYTES, DATA_URI_PAYLOAD_CLONE_BYTES, DEFAULT_CODE_FONT_FAMILY,
     DEFAULT_EDITOR_FONT_SIZE, DEFAULT_EDITOR_SPLIT_RATIO, DEFAULT_HEADING_MENU_MAX_LEVEL,
-    DEFAULT_PARAGRAPH_SPACING, DEFAULT_RENDERED_FONT_SIZE, DEFAULT_SIDEBAR_WIDTH,
-    DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_WIDTH, DocumentBasicStats, DocumentStats,
-    DocxExportOptions, DocxImagePolicy, DocxPageSize, EDITOR_SPLIT_RATIO_MAX,
-    EDITOR_SPLIT_RATIO_MIN, EXTENDED_HEADING_MENU_MAX_LEVEL, EngineFailureCategory, ExportBackend,
-    ExportBackendPreference, ExportFormat, ExportOutcome, ExportPreferences, Footnote,
-    FrontMatterError, GitPreferences, Heading, HighlightKind, HighlightedSpan, HtmlImageDescriptor,
-    HtmlImgLength, ImageSourceIdentity, InlineImage, InlineSpan, InlineStyle,
-    MAX_AUTO_SAVE_DELAY_SECS, MAX_CODE_FONT_SIZE, MAX_EDITOR_FONT_SIZE, MAX_PARAGRAPH_SPACING,
-    MAX_RECENT_FILES, MAX_RECENT_WORKSPACES, MAX_RENDERED_FONT_SIZE, MIN_AUTO_SAVE_DELAY_SECS,
-    MIN_CODE_FONT_SIZE, MIN_EDITOR_FONT_SIZE, MIN_PARAGRAPH_SPACING, MIN_RENDERED_FONT_SIZE,
-    MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, MarkdownFormat, MathDelimiter, MathExpression,
-    MathLayoutStyle, MathSource, PdfExportOptions, PdfPageSize, PreviewBlock, RecoveryDocument,
-    RenderedMath, ReplaceResult, RichText, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH,
+    DEFAULT_PARAGRAPH_SPACING, DEFAULT_PARTICLE_INTENSITY, DEFAULT_RENDERED_FONT_SIZE,
+    DEFAULT_SIDEBAR_WIDTH, DEFAULT_UI_OPACITY, DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_WIDTH,
+    DocumentBasicStats, DocumentStats, DocxExportOptions, DocxImagePolicy, DocxPageSize,
+    EDITOR_SPLIT_RATIO_MAX, EDITOR_SPLIT_RATIO_MIN, EXTENDED_HEADING_MENU_MAX_LEVEL,
+    EngineFailureCategory, ExportBackend, ExportBackendPreference, ExportFormat, ExportOutcome,
+    ExportPreferences, Footnote, FrontMatterError, GitPreferences, Heading, HighlightKind,
+    HighlightedSpan, HtmlImageDescriptor, HtmlImgLength, ImageSourceIdentity, InlineImage,
+    InlineSpan, InlineStyle, MAX_AUTO_SAVE_DELAY_SECS, MAX_CODE_FONT_SIZE, MAX_EDITOR_FONT_SIZE,
+    MAX_PARAGRAPH_SPACING, MAX_PARTICLE_INTENSITY, MAX_RECENT_FILES, MAX_RECENT_WORKSPACES,
+    MAX_RENDERED_FONT_SIZE, MAX_UI_OPACITY, MIN_AUTO_SAVE_DELAY_SECS, MIN_CODE_FONT_SIZE,
+    MIN_EDITOR_FONT_SIZE, MIN_PARAGRAPH_SPACING, MIN_PARTICLE_INTENSITY, MIN_RENDERED_FONT_SIZE,
+    MIN_UI_OPACITY, MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, MarkdownFormat, MathDelimiter,
+    MathExpression, MathLayoutStyle, MathSource, PdfExportOptions, PdfPageSize, PreviewBlock,
+    RecoveryDocument, RenderedMath, ReplaceResult, RichText, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH,
     SYSTEM_UI_FONT_FAMILY, SearchError, SearchMatch, SearchMatchRange, SearchOptions,
     SessionLayout, SessionState, SidebarTab, TableAlignment, TableEdit, TableEditResult,
     ThemeColors, ThemeDefinition, ThemeFonts, ViewMode, VisualBlock, VisualBlockEdit,
@@ -179,9 +180,10 @@ pub use model::{
     filter_paths_in_workspace_root, layout_rect_is_visible, normalize_auto_save_delay_secs,
     normalize_code_font_size, normalize_editor_font_size, normalize_editor_split_ratio,
     normalize_font_family, normalize_heading_menu_max_level, normalize_paragraph_spacing,
-    normalize_rendered_font_size, normalize_sidebar_width, normalize_window_size,
-    record_data_uri_payload_clone, reset_data_uri_work_counters, resolve_font_family,
-    touch_recent_file, touch_workspace_snapshot, with_image_identity_interner,
+    normalize_particle_intensity, normalize_rendered_font_size, normalize_sidebar_width,
+    normalize_ui_opacity, normalize_window_size, record_data_uri_payload_clone,
+    reset_data_uri_work_counters, resolve_font_family, touch_recent_file, touch_workspace_snapshot,
+    with_image_identity_interner,
 };
 pub use visual::{
     build_visual_projection, build_visual_projection_with_marked_range, data_uri_payload_ranges,
@@ -8002,6 +8004,10 @@ Intro.
             code_theme: CodeTheme::Light,
             code_long_line_wrap: false,
             code_font_size: Some(16),
+            glass_effect_enabled: false,
+            ui_opacity: 62,
+            particle_effects_enabled: true,
+            particle_intensity: 3,
             preview_adaptive_width: true,
             editor_font_size: 18,
             rendered_font_size: 20,
@@ -8045,6 +8051,9 @@ Intro.
         assert!(written.contains("editor_font_size = 18"));
         assert!(written.contains("rendered_font_size = 20"));
         assert!(written.contains("paragraph_spacing = 16"));
+        assert!(written.contains("glass_effect_enabled = false"));
+        assert!(written.contains("ui_opacity = 62"));
+        assert!(written.contains("particle_intensity = 3"));
         assert!(written.contains("[git]"));
         assert!(written.contains("background_check = true"));
         assert!(written.contains("heading_menu_max_level = 6"));
@@ -8061,7 +8070,7 @@ Intro.
             parse_app_preferences("theme = \"Forest\"\n\n[auto_save]\ndelay_secs = 9\n").unwrap();
         assert_eq!(parsed.theme, "Forest");
         assert_eq!(parsed.custom_theme, None);
-        assert_eq!(parsed.language, "en");
+        assert_eq!(parsed.language, "zh-hans");
         assert!(!parsed.preview_adaptive_width);
         assert!(parsed.markdown_auto_pair);
         assert_eq!(parsed.editor_font_size, DEFAULT_EDITOR_FONT_SIZE);

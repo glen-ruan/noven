@@ -519,14 +519,8 @@ pub(super) fn preview_block_source_range(block: &PreviewBlock) -> Option<Range<u
     Some(block.source_range().clone())
 }
 
-/// Preview color accents shared across themes. Block chrome colors stay in
-/// line with the previous hardcoded preview styling.
-const PREVIEW_LINK_COLOR: u32 = 0x2563eb;
 const PREVIEW_SELECTION_COLOR: u32 = 0x2563eb30;
-const PREVIEW_INLINE_CODE_COLOR: u32 = 0xdb2777;
-const PREVIEW_INLINE_CODE_BG: u32 = 0x64748b26;
 const PREVIEW_HIGHLIGHT_BG: u32 = 0xfde04766;
-const PREVIEW_SUPER_SUB_COLOR: u32 = 0x64748b;
 
 /// Builds selection highlight quads for a byte range inside a shaped
 /// [`TextLayout`], mirroring the source editor's wrap-aware selection paint.
@@ -1621,6 +1615,7 @@ pub(super) fn rich_text_element(
     metrics: (f32, f32),
     cx: &mut Context<MarkionApp>,
 ) -> gpui::AnyElement {
+    let palette = app.palette();
     if rich.text.contains('\n')
         || rich
             .spans
@@ -1656,8 +1651,8 @@ pub(super) fn rich_text_element(
             styled = true;
         }
         if span.style.code {
-            style.background_color = Some(rgba(PREVIEW_INLINE_CODE_BG).into());
-            style.color = Some(rgb(PREVIEW_INLINE_CODE_COLOR).into());
+            style.background_color = Some(glass(palette.active_bg, 0.5).into());
+            style.color = Some(palette.active_text.into());
             styled = true;
         }
         if span.style.highlight {
@@ -1665,7 +1660,7 @@ pub(super) fn rich_text_element(
             styled = true;
         }
         if span.style.superscript || span.style.subscript {
-            style.color = Some(rgb(PREVIEW_SUPER_SUB_COLOR).into());
+            style.color = Some(palette.muted.into());
             styled = true;
         }
         if span.style.underline {
@@ -1681,7 +1676,7 @@ pub(super) fn rich_text_element(
             styled = true;
         }
         if let Some(url) = &span.link {
-            style.color = Some(rgb(PREVIEW_LINK_COLOR).into());
+            style.color = Some(palette.active_text.into());
             style.underline = Some(UnderlineStyle {
                 thickness: px(1.),
                 color: None,
@@ -1783,6 +1778,7 @@ fn rich_inline_fragments(
     metrics: (f32, f32),
     cx: &mut Context<MarkionApp>,
 ) -> gpui::AnyElement {
+    let palette = app.palette();
     let selection = active_preview_run_selection(app, block_index, run_id, &rich.text);
     let searches = active_preview_search_ranges(app, block_index, run_id, &rich.text);
     let run_text = SharedString::from(rich.text.clone());
@@ -1797,7 +1793,7 @@ fn rich_inline_fragments(
                     continue;
                 }
                 let range = offset..offset + fragment.len();
-                let style = preview_span_highlight(span)
+                let style = preview_span_highlight(span, palette)
                     .map(|style| vec![(0..fragment.len(), style)])
                     .unwrap_or_default();
                 let child = SelectablePreviewText::new(
@@ -1889,7 +1885,7 @@ fn preview_fragment_search_ranges(
         .collect()
 }
 
-fn preview_span_highlight(span: &InlineSpan) -> Option<HighlightStyle> {
+fn preview_span_highlight(span: &InlineSpan, palette: ThemePalette) -> Option<HighlightStyle> {
     let mut style = HighlightStyle::default();
     let mut styled = false;
     if span.style.bold {
@@ -1908,8 +1904,8 @@ fn preview_span_highlight(span: &InlineSpan) -> Option<HighlightStyle> {
         styled = true;
     }
     if span.style.code {
-        style.background_color = Some(rgba(PREVIEW_INLINE_CODE_BG).into());
-        style.color = Some(rgb(PREVIEW_INLINE_CODE_COLOR).into());
+        style.background_color = Some(glass(palette.active_bg, 0.5).into());
+        style.color = Some(palette.active_text.into());
         styled = true;
     }
     if span.style.highlight {
@@ -1917,7 +1913,7 @@ fn preview_span_highlight(span: &InlineSpan) -> Option<HighlightStyle> {
         styled = true;
     }
     if span.style.superscript || span.style.subscript {
-        style.color = Some(rgb(PREVIEW_SUPER_SUB_COLOR).into());
+        style.color = Some(palette.muted.into());
         styled = true;
     }
     if span.style.underline {
@@ -1933,7 +1929,7 @@ fn preview_span_highlight(span: &InlineSpan) -> Option<HighlightStyle> {
         styled = true;
     }
     if span.link.is_some() {
-        style.color = Some(rgb(PREVIEW_LINK_COLOR).into());
+        style.color = Some(palette.active_text.into());
         style.underline = Some(UnderlineStyle {
             thickness: px(1.),
             color: None,
@@ -2099,7 +2095,9 @@ fn preview_math_atom(
         .w(image.size.width)
         .h(metric_height)
         .mb(baseline_margin)
-        .when(selected, |atom| atom.bg(rgba(PREVIEW_SELECTION_COLOR)))
+        .when(selected, |atom| {
+            atom.bg(glass(app.palette().active_bg, 0.42))
+        })
         .child(
             img(ImageSource::Render(image.image.clone()))
                 .absolute()
@@ -2222,8 +2220,8 @@ pub(super) fn rich_text_with_math_element(
                 MathCacheEntry::Pending | MathCacheEntry::Error(_) => {
                     let local_len = span.text.len();
                     let mut style = HighlightStyle {
-                        color: Some(rgb(PREVIEW_INLINE_CODE_COLOR).into()),
-                        background_color: Some(rgba(PREVIEW_INLINE_CODE_BG).into()),
+                        color: Some(app.palette().active_text.into()),
+                        background_color: Some(glass(app.palette().active_bg, 0.5).into()),
                         ..Default::default()
                     };
                     if matches!(
@@ -2277,7 +2275,7 @@ pub(super) fn rich_text_with_math_element(
                 let fragment_range = fragment_start..fragment_start + fragment.len();
                 let local_range = 0..fragment.len();
                 let mut highlights = Vec::new();
-                if let Some(style) = preview_span_highlight(span) {
+                if let Some(style) = preview_span_highlight(span, app.palette()) {
                     highlights.push((local_range, style));
                 }
                 let links = span
@@ -2514,9 +2512,26 @@ pub(super) fn next_preview_parse_id() -> u64 {
     NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
+#[cfg(test)]
 pub(super) fn visual_highlight_style(
     inline_style: InlineStyle,
     link: bool,
+) -> Option<HighlightStyle> {
+    let default_theme = builtin_theme_definitions()
+        .into_iter()
+        .next()
+        .expect("built-in theme catalog is non-empty");
+    visual_highlight_style_for_palette(
+        inline_style,
+        link,
+        theme_palette_from_definition(&default_theme),
+    )
+}
+
+fn visual_highlight_style_for_palette(
+    inline_style: InlineStyle,
+    link: bool,
+    palette: ThemePalette,
 ) -> Option<HighlightStyle> {
     let mut style = HighlightStyle::default();
     let mut styled = false;
@@ -2536,8 +2551,8 @@ pub(super) fn visual_highlight_style(
         styled = true;
     }
     if inline_style.code {
-        style.background_color = Some(rgba(PREVIEW_INLINE_CODE_BG).into());
-        style.color = Some(rgb(PREVIEW_INLINE_CODE_COLOR).into());
+        style.background_color = Some(glass(palette.active_bg, 0.5).into());
+        style.color = Some(palette.active_text.into());
         styled = true;
     }
     if inline_style.highlight {
@@ -2545,7 +2560,7 @@ pub(super) fn visual_highlight_style(
         styled = true;
     }
     if inline_style.superscript || inline_style.subscript {
-        style.color = Some(rgb(PREVIEW_SUPER_SUB_COLOR).into());
+        style.color = Some(palette.muted.into());
         styled = true;
     }
     if inline_style.underline {
@@ -2561,7 +2576,7 @@ pub(super) fn visual_highlight_style(
         styled = true;
     }
     if link {
-        style.color = Some(rgb(PREVIEW_LINK_COLOR).into());
+        style.color = Some(palette.active_text.into());
         style.underline = Some(UnderlineStyle {
             thickness: px(1.),
             color: None,
@@ -2654,9 +2669,26 @@ fn overlay_visual_highlight(
     result
 }
 
+#[cfg(test)]
 pub(super) fn visual_projection_highlights(
     projection: &VisualProjection,
     marked_range: Option<&Range<usize>>,
+) -> Vec<(Range<usize>, HighlightStyle)> {
+    let default_theme = builtin_theme_definitions()
+        .into_iter()
+        .next()
+        .expect("built-in theme catalog is non-empty");
+    visual_projection_highlights_for_palette(
+        projection,
+        marked_range,
+        theme_palette_from_definition(&default_theme),
+    )
+}
+
+fn visual_projection_highlights_for_palette(
+    projection: &VisualProjection,
+    marked_range: Option<&Range<usize>>,
+    palette: ThemePalette,
 ) -> Vec<(Range<usize>, HighlightStyle)> {
     let highlights = projection
         .spans
@@ -2664,12 +2696,12 @@ pub(super) fn visual_projection_highlights(
         .filter_map(|span| {
             let style = if span.source {
                 Some(HighlightStyle {
-                    color: Some(rgb(PREVIEW_INLINE_CODE_COLOR).into()),
-                    background_color: Some(rgba(PREVIEW_INLINE_CODE_BG).into()),
+                    color: Some(palette.active_text.into()),
+                    background_color: Some(glass(palette.active_bg, 0.5).into()),
                     ..Default::default()
                 })
             } else {
-                visual_highlight_style(span.style, span.link)
+                visual_highlight_style_for_palette(span.style, span.link, palette)
             }?;
             Some((span.display_range.clone(), style))
         })
@@ -2686,7 +2718,7 @@ pub(super) fn visual_projection_highlights(
         display_range,
         HighlightStyle {
             underline: Some(UnderlineStyle {
-                color: Some(rgb(0x2563eb).into()),
+                color: Some(palette.active_text.into()),
                 thickness: px(1.),
                 wavy: false,
             }),
@@ -2711,7 +2743,8 @@ pub(super) fn visual_text_element(
         source_cursor,
         marked_range.clone(),
     );
-    let mut highlights = visual_projection_highlights(&projection, marked_range.as_ref());
+    let mut highlights =
+        visual_projection_highlights_for_palette(&projection, marked_range.as_ref(), app.palette());
     if app.search_visible {
         for (index, target) in app.search_matches.iter().enumerate() {
             let SearchTarget::Source(found) = target else {
@@ -2848,7 +2881,9 @@ fn visual_math_atom(
         .w(image.size.width)
         .h(metric_height)
         .mb(baseline_margin)
-        .when(selected, |atom| atom.bg(rgba(PREVIEW_SELECTION_COLOR)))
+        .when(selected, |atom| {
+            atom.bg(glass(app.palette().active_bg, 0.42))
+        })
         .child(
             img(ImageSource::Render(image.image.clone()))
                 .absolute()
@@ -2895,6 +2930,7 @@ fn visual_html_image_atom(
     document_dir: Option<&Path>,
     cx: &mut Context<MarkionApp>,
 ) -> gpui::AnyElement {
+    let palette = app.palette();
     let selected = {
         let selection = &app.active_tab().selected_range;
         !selection.is_empty()
@@ -2943,10 +2979,10 @@ fn visual_html_image_atom(
                 .py_1()
                 .rounded_md()
                 .border_1()
-                .border_color(rgb(0xcbd5e1))
-                .bg(rgb(0xf8fafc))
+                .border_color(palette.border)
+                .bg(frosted(palette.panel_bg, COMPONENT_GLASS_ALPHA, 0.08))
                 .text_size(px(11.))
-                .text_color(rgb(0x64748b))
+                .text_color(palette.muted)
                 .child(label.to_string())
                 .into_any_element()
         }
@@ -2955,7 +2991,9 @@ fn visual_html_image_atom(
         .relative()
         .flex_none()
         .max_w_full()
-        .when(selected, |atom| atom.bg(rgba(PREVIEW_SELECTION_COLOR)))
+        .when(selected, |atom| {
+            atom.bg(glass(app.palette().active_bg, 0.42))
+        })
         .child(content)
         .child(
             div()
@@ -3158,6 +3196,7 @@ pub(super) fn visual_text_with_math_element(
                 segment.source_range.end,
                 block_index,
                 fragment_index,
+                app.palette(),
                 cx,
             );
             continue;
@@ -3183,6 +3222,7 @@ pub(super) fn visual_text_with_math_element(
                 segment.source_range.end,
                 block_index,
                 fragment_index,
+                app.palette(),
                 cx,
             );
             continue;
@@ -3191,12 +3231,16 @@ pub(super) fn visual_text_with_math_element(
         let visible = &projection.text[segment.display_range.clone()];
         let style = if projected_span.source {
             Some(HighlightStyle {
-                color: Some(rgb(PREVIEW_INLINE_CODE_COLOR).into()),
-                background_color: Some(rgba(PREVIEW_INLINE_CODE_BG).into()),
+                color: Some(app.palette().active_text.into()),
+                background_color: Some(glass(app.palette().active_bg, 0.5).into()),
                 ..Default::default()
             })
         } else {
-            visual_highlight_style(projected_span.style, projected_span.link)
+            visual_highlight_style_for_palette(
+                projected_span.style,
+                projected_span.link,
+                app.palette(),
+            )
         };
         let can_split = visible.len() == segment.source_range.len();
         let mut local_start = 0usize;
@@ -3265,6 +3309,7 @@ pub(super) fn visual_text_with_math_element(
                             source_range.end,
                             block_index,
                             fragment_index,
+                            app.palette(),
                             cx,
                         );
                     }
@@ -3322,6 +3367,7 @@ pub(super) fn visual_text_with_math_element(
                         source_range.end,
                         block_index,
                         fragment_index,
+                        app.palette(),
                         cx,
                     );
                 }
@@ -3337,6 +3383,7 @@ pub(super) fn visual_text_with_math_element(
             segment.source_range.end,
             block_index,
             fragment_index,
+            app.palette(),
             cx,
         );
     }
@@ -3417,6 +3464,7 @@ fn emit_navigation_icons_after(
     source_end: usize,
     block_index: usize,
     fragment_index: usize,
+    palette: ThemePalette,
     cx: &mut Context<MarkionApp>,
 ) -> usize {
     let mut emitted = 0usize;
@@ -3426,6 +3474,7 @@ fn emit_navigation_icons_after(
             block_index,
             fragment_index + emitted,
             target,
+            palette,
             cx,
         ));
         emitted += 1;
@@ -3437,6 +3486,7 @@ fn visual_navigation_icon(
     block_index: usize,
     fragment_index: usize,
     target: VisualNavigationTarget,
+    palette: ThemePalette,
     cx: &mut Context<MarkionApp>,
 ) -> gpui::AnyElement {
     let glyph = match &target {
@@ -3452,9 +3502,9 @@ fn visual_navigation_icon(
         .rounded_sm()
         .text_size(px(11.))
         .line_height(px(14.))
-        .text_color(rgb(PREVIEW_LINK_COLOR))
+        .text_color(palette.active_text)
         .cursor(CursorStyle::PointingHand)
-        .hover(|style| style.bg(rgba(0x2563eb22)))
+        .hover(move |style| style.bg(glass(palette.active_bg, 0.5)))
         .on_mouse_down(
             MouseButton::Left,
             cx.listener(move |app, _: &MouseDownEvent, window, cx| {
@@ -3476,6 +3526,7 @@ pub(super) fn visual_source_island_view(
     cx: &mut Context<MarkionApp>,
 ) -> Div {
     let typography = app.typography_metrics();
+    let palette = app.palette();
     let document_text = app.active_tab().document.text();
     let source = document_text[block.source_range.clone()].to_string();
     // Unprovable data-URI image spans fall back to this island; their opaque
@@ -3493,7 +3544,7 @@ pub(super) fn visual_source_island_view(
         StyledText::new(SharedString::from(projection.text.clone())).with_highlights(
             token_displays
                 .iter()
-                .map(|range| (range.clone(), elided_token_highlight()))
+                .map(|range| (range.clone(), elided_token_highlight(palette)))
                 .collect::<Vec<_>>(),
         )
     };
@@ -3502,8 +3553,8 @@ pub(super) fn visual_source_island_view(
         .px_2()
         .py_1()
         .border_l_2()
-        .border_color(rgb(0xcbd5e1))
-        .bg(rgb(0xf8fafc))
+        .border_color(palette.border)
+        .bg(frosted(palette.panel_bg, COMPONENT_GLASS_ALPHA, 0.08))
         .font(code_slot_font(&app.resolved_font_families.code))
         .text_size(px(typography.source_island_font_size))
         .line_height(px(typography.source_island_line_height))
@@ -4031,6 +4082,7 @@ fn visual_block_content_view(
     cx: &mut Context<MarkionApp>,
 ) -> Div {
     let typography = app.typography_metrics();
+    let palette = app.palette();
     let body_flow_spacing = visual_body_flow_paragraph_spacing(
         &app.active_tab().document.visual_blocks_shared(),
         block_index,
@@ -4164,7 +4216,7 @@ fn visual_block_content_view(
                         .flex_none()
                         .min_w(px(22.))
                         .pr_1()
-                        .text_color(rgb(0x64748b))
+                        .text_color(palette.muted)
                         .when(clickable_checkbox, |marker| {
                             marker.cursor_pointer().on_mouse_up(
                                 MouseButton::Left,
@@ -4193,8 +4245,8 @@ fn visual_block_content_view(
             .mb_3()
             .pl_3()
             .border_l_1()
-            .border_color(rgb(0x94a3b8))
-            .text_color(rgb(0x475569))
+            .border_color(palette.border)
+            .text_color(palette.muted)
             .text_size(px(typography.quote_font_size))
             .line_height(px(typography.quote_line_height))
             .child(visual_text_with_math_element(
@@ -4258,11 +4310,11 @@ fn visual_block_content_view(
                             div()
                                 .mt_1()
                                 .text_size(px(11.))
-                                .text_color(rgb(0x64748b))
+                                .text_color(palette.muted)
                                 .child(text.to_string())
                         }))
                         .children((owns_caret && exact_image.is_some()).then(|| {
-                            visual_image_controls(offset, image_presentation, app.language, cx)
+                            visual_image_controls(app, offset, image_presentation, app.language, cx)
                         })),
                 );
             if let Some(VisualBlockEditor::Image {
@@ -4294,7 +4346,7 @@ fn visual_block_content_view(
                     MouseButton::Left,
                     cx.listener(move |app, _, _, cx| app.move_to(offset, cx)),
                 )
-                .child(div().mt(px(5.)).h(px(1.)).bg(rgb(0xcbd5e1)))
+                .child(div().mt(px(5.)).h(px(1.)).bg(palette.border))
         }
         VisualBlockKind::Table { rows, .. } => {
             div().child(visual_table_view(app, block, block_index, rows, cx))
@@ -4460,7 +4512,7 @@ fn visual_block_content_view(
             .mt_2()
             .pt_2()
             .border_t_1()
-            .border_color(rgb(0xe2e8f0))
+            .border_color(palette.border)
             .flex()
             .items_start()
             .gap_2()
@@ -4470,7 +4522,7 @@ fn visual_block_content_view(
                 div()
                     .flex_none()
                     .text_size(px(typography.rendered_font_size * 0.75))
-                    .text_color(rgb(0x64748b))
+                    .text_color(palette.muted)
                     .child(format!("[{label}]")),
             )
             .child(
@@ -4509,8 +4561,8 @@ fn visual_block_content_view(
             .pt(px(padding_top))
             .pb(px(padding_bottom))
             .border_l_1()
-            .border_color(rgb(0x94a3b8))
-            .text_color(rgb(0x475569))
+            .border_color(palette.border)
+            .text_color(palette.muted)
             .child(row)
     } else {
         row
@@ -4968,11 +5020,12 @@ pub(super) fn visual_reference_definition_view(
     cx: &mut Context<MarkionApp>,
 ) -> Div {
     let typography = app.typography_metrics();
+    let palette = app.palette();
     let source = app.active_tab().document.text()[block.source_range.clone()].to_string();
     let source_len = source.len();
     div()
         .mb_1()
-        .text_color(rgb(0x64748b))
+        .text_color(palette.muted)
         .font(code_slot_font(&app.resolved_font_families.code))
         .text_size(px(typography.source_island_font_size))
         .line_height(px(typography.source_island_line_height))
@@ -5065,7 +5118,11 @@ fn visual_editor_field_element(
                         index,
                         fragment.to_string(),
                         field.source_range.clone(),
-                        visual_highlight_style(span.style, span.link.is_some()),
+                        visual_highlight_style_for_palette(
+                            span.style,
+                            span.link.is_some(),
+                            app.palette(),
+                        ),
                         app,
                         cx,
                         #[cfg(test)]
@@ -5113,7 +5170,7 @@ fn visual_editor_field_element(
             let txt = proj.text.clone();
             (proj, txt, Vec::new(), token_displays)
         } else {
-            let (proj, hl) = table_cell_rendered_projection(rich, field);
+            let (proj, hl) = table_cell_rendered_projection(rich, field, app.palette());
             let txt = proj.text.clone();
             (proj, txt, hl, Vec::new())
         }
@@ -5142,7 +5199,7 @@ fn visual_editor_field_element(
         StyledText::new(SharedString::from(text.clone())).with_highlights(
             token_displays
                 .into_iter()
-                .map(|range| (range, elided_token_highlight()))
+                .map(|range| (range, elided_token_highlight(app.palette())))
                 .collect::<Vec<_>>(),
         )
     } else if !highlights.is_empty() {
@@ -5173,10 +5230,10 @@ fn visual_editor_field_element(
 
 /// Chip styling for the elided-payload summary token: a soft tint plus dimmed
 /// text so the token reads as chrome rather than authored source bytes.
-fn elided_token_highlight() -> HighlightStyle {
+fn elided_token_highlight(palette: ThemePalette) -> HighlightStyle {
     HighlightStyle {
-        background_color: Some(rgba(0xf1f5f9ff).into()),
-        color: Some(rgb(0x64748b).into()),
+        background_color: Some(frosted(palette.panel_bg, EMPHASIS_GLASS_ALPHA, 0.1).into()),
+        color: Some(palette.muted.into()),
         ..Default::default()
     }
 }
@@ -5251,6 +5308,7 @@ pub(super) fn visual_payload_field_projection(
 fn table_cell_rendered_projection(
     rich: &RichText,
     field: &VisualEditorField,
+    palette: ThemePalette,
 ) -> (VisualProjection, Vec<(Range<usize>, HighlightStyle)>) {
     let text = rich.text.clone();
     let mut highlights = Vec::new();
@@ -5259,7 +5317,9 @@ fn table_cell_rendered_projection(
     for span in &rich.spans {
         let range = offset..offset + span.text.len();
         offset = range.end;
-        if let Some(style) = visual_highlight_style(span.style, span.link.is_some()) {
+        if let Some(style) =
+            visual_highlight_style_for_palette(span.style, span.link.is_some(), palette)
+        {
             highlights.push((range.clone(), style));
         }
         spans.push(markion::VisualProjectionSpan {
@@ -5373,7 +5433,8 @@ fn visual_code_editor(
     cx: &mut Context<MarkionApp>,
 ) -> Stateful<Div> {
     let typography = app.typography_metrics();
-    let palette = code_palette(app.code_theme);
+    let palette = code_palette(app.effective_code_theme());
+    let theme = app.palette();
     let code = &app.active_tab().document.text()[payload.source_range.clone()];
     let highlighted = app.highlighted_code(language, code);
     let (styled, _) = code_block_text(&highlighted, palette);
@@ -5391,7 +5452,14 @@ fn visual_code_editor(
         .mb_3()
         .p_3()
         .rounded_md()
-        .bg(palette.bg)
+        .border_1()
+        .border_color(theme.border)
+        .shadow_md()
+        .bg(app.glass_surface(
+            theme.surface_bg,
+            COMPONENT_GLASS_ALPHA,
+            0.04,
+        ))
         .text_color(palette.text)
         .font(code_slot_font(&app.resolved_font_families.code))
         .text_size(px(typography.code_font_size))
@@ -5439,6 +5507,7 @@ fn visual_math_editor(
     cx: &mut Context<MarkionApp>,
 ) -> Div {
     let typography = app.typography_metrics();
+    let palette = app.palette();
     let entry = app.math_entry(
         latex,
         MathLayoutStyle::Display,
@@ -5469,14 +5538,14 @@ fn visual_math_editor(
             .child(app.tr(Msg::MathRendering)),
         MathCacheEntry::Error(error) => div()
             .py_2()
-            .text_color(rgb(0xb91c1c))
+            .text_color(palette.invalid)
             .child(app.math_error_message(&error)),
     };
     let payload_editor = move |cx: &mut Context<MarkionApp>| {
         div()
             .border_t_1()
-            .border_color(rgb(0xe2e8f0))
-            .bg(rgb(0xf8fafc))
+            .border_color(palette.border)
+            .bg(frosted(palette.panel_bg, COMPONENT_GLASS_ALPHA, 0.08))
             .p_2()
             .font(code_slot_font(&app.resolved_font_families.code))
             .text_size(px(typography.code_font_size))
@@ -5516,6 +5585,7 @@ fn visual_html_editor(
     cx: &mut Context<MarkionApp>,
 ) -> Div {
     let typography = app.typography_metrics();
+    let palette = app.palette();
     let presentation = html_preview_block_view(app, html, images, block_index, document_dir, cx);
     let bordered = !html_preview_parts(html)
         .iter()
@@ -5523,8 +5593,8 @@ fn visual_html_editor(
     let payload_editor = move |cx: &mut Context<MarkionApp>| {
         div()
             .border_t_1()
-            .border_color(rgb(0xe2e8f0))
-            .bg(rgb(0xf8fafc))
+            .border_color(palette.border)
+            .bg(frosted(palette.panel_bg, COMPONENT_GLASS_ALPHA, 0.08))
             .p_2()
             .font(code_slot_font(&app.resolved_font_families.code))
             .text_size(px(typography.source_island_font_size))
@@ -5572,6 +5642,7 @@ fn visual_diagram_editor(
     cx: &mut Context<MarkionApp>,
 ) -> Div {
     let typography = app.typography_metrics();
+    let palette = app.palette();
     // Read the authored source through the same document slice the cache key
     // uses, so the visual-blocks render and the Split Preview render share one
     // cache entry for the same fence.
@@ -5610,7 +5681,7 @@ fn visual_diagram_editor(
         Some(DiagramCacheEntry::Error(error)) => div()
             .w_full()
             .py_2()
-            .text_color(rgb(0xb91c1c))
+            .text_color(palette.invalid)
             .child(app.diagram_error_message(&error)),
         None => div()
             .w_full()
@@ -5621,8 +5692,8 @@ fn visual_diagram_editor(
     let payload_editor = move |cx: &mut Context<MarkionApp>| {
         div()
             .border_t_1()
-            .border_color(rgb(0xe2e8f0))
-            .bg(rgb(0xf8fafc))
+            .border_color(palette.border)
+            .bg(frosted(palette.panel_bg, COMPONENT_GLASS_ALPHA, 0.08))
             .p_2()
             .font(code_slot_font(&app.resolved_font_families.code))
             .text_size(px(typography.code_font_size))
@@ -5631,7 +5702,7 @@ fn visual_diagram_editor(
                 app,
                 language,
                 code,
-                code_palette(app.code_theme),
+                code_palette(app.effective_code_theme()),
                 // The header only exists inside the payload editor, which is
                 // mounted when the user expanded the source — so the language
                 // chip is always editable while it is on screen.
@@ -5666,11 +5737,13 @@ fn visual_diagram_editor(
 /// render-only by default, hover `</>` expands the payload editor, click
 /// outside collapses (pending/error force the editor open).
 fn visual_image_controls(
+    app: &MarkionApp,
     offset: usize,
     presentation: ImagePresentation,
     language: Language,
     cx: &mut Context<MarkionApp>,
 ) -> Div {
+    let palette = app.palette();
     let button = |id: &'static str, label: &'static str| {
         div()
             .id((id, offset))
@@ -5678,8 +5751,9 @@ fn visual_image_controls(
             .py_1()
             .rounded_sm()
             .border_1()
-            .border_color(rgb(0xcbd5e1))
-            .bg(rgb(0xffffff))
+            .border_color(palette.border)
+            .bg(frosted(palette.surface_bg, COMPONENT_GLASS_ALPHA, 0.06))
+            .text_color(palette.text)
             .text_size(px(11.))
             .cursor(CursorStyle::PointingHand)
             .child(label)
@@ -5806,6 +5880,7 @@ fn visual_image_source_editor(
     cx: &mut Context<MarkionApp>,
 ) -> Stateful<Div> {
     let typography = app.typography_metrics();
+    let palette = app.palette();
     // Data-URI destinations decide forced expansion by fingerprint so no
     // frame re-derives a multi-megabyte cache key; short destinations keep
     // the direct entry probe.
@@ -5822,8 +5897,8 @@ fn visual_image_source_editor(
     let payload_editor = move |cx: &mut Context<MarkionApp>| {
         div()
             .border_b_1()
-            .border_color(rgb(0xe2e8f0))
-            .bg(rgb(0xf8fafc))
+            .border_color(palette.border)
+            .bg(frosted(palette.panel_bg, COMPONENT_GLASS_ALPHA, 0.08))
             .pt(px(30.))
             .px_2()
             .pb_2()
@@ -5871,6 +5946,7 @@ fn visual_collapsible_source_block(
     payload_editor: impl FnOnce(&mut Context<MarkionApp>) -> gpui::AnyElement,
     cx: &mut Context<MarkionApp>,
 ) -> Stateful<Div> {
+    let palette = app.palette();
     let tab = app.active_tab();
     let cursor = tab.cursor_offset();
     let caret_in_payload =
@@ -5904,7 +5980,7 @@ fn visual_collapsible_source_block(
         .when(bordered, |chrome| {
             chrome
                 .border_1()
-                .border_color(rgb(0xcbd5e1))
+                .border_color(palette.border)
                 .rounded_md()
                 .overflow_hidden()
         })
@@ -5940,13 +6016,17 @@ fn visual_collapsible_source_block(
                     .py(px(2.))
                     .rounded_sm()
                     .border_1()
-                    .border_color(rgb(0xcbd5e1))
-                    .bg(rgb(0xffffff))
+                    .border_color(palette.border)
+                    .bg(frosted(palette.surface_bg, EMPHASIS_GLASS_ALPHA, 0.06))
                     .text_size(px(11.))
                     .line_height(px(14.))
-                    .text_color(rgb(0x475569))
+                    .text_color(palette.muted)
                     .cursor(CursorStyle::PointingHand)
-                    .hover(|style| style.bg(rgb(0xf1f5f9)).text_color(rgb(0x0f172a)))
+                    .hover(move |style| {
+                        style
+                            .bg(glass(palette.active_bg, 0.72))
+                            .text_color(palette.active_text)
+                    })
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |app, _: &MouseDownEvent, window, cx| {
@@ -6127,6 +6207,7 @@ pub(super) fn visual_table_view(
     cx: &mut Context<MarkionApp>,
 ) -> Stateful<Div> {
     let typography = app.typography_metrics();
+    let palette = app.palette();
     let column_weights = preview_table_column_weights(rows, &typography);
     let table_offset = block.source_range.start;
     let block_id = block.id;
@@ -6150,7 +6231,7 @@ pub(super) fn visual_table_view(
         .debug_selector(move || format!("visual-table-chrome-{block_index}"))
         .mb_3()
         .border_1()
-        .border_color(rgb(0xcbd5e1))
+        .border_color(palette.border)
         .rounded_md()
         .overflow_hidden()
         .on_hover(cx.listener(move |app, hovered: &bool, _, cx| {
@@ -6175,14 +6256,14 @@ pub(super) fn visual_table_view(
                     .flex()
                     .gap_1()
                     .items_center()
-                    .bg(rgb(0xf8fafc))
+                    .bg(frosted(palette.panel_bg, EMPHASIS_GLASS_ALPHA, 0.1))
                     .border_b_1()
-                    .border_color(rgb(0xe2e8f0))
+                    .border_color(palette.border)
                     .child(
                         div()
                             .flex_1()
                             .text_size(px(11.))
-                            .text_color(rgb(0x64748b))
+                            .text_color(palette.muted)
                             .child(app.tr(Msg::LabelTable)),
                     )
                     .children(
@@ -6191,28 +6272,29 @@ pub(super) fn visual_table_view(
                             .map(|&(label, edit, status)| {
                                 let target = toolbar_target
                                     .filter(|target| table_toolbar_action_available(*target, edit));
-                                preview_table_button(label, edit, status, target, cx)
+                                preview_table_button(label, edit, status, target, palette, cx)
                             }),
                     )
                     .child(preview_table_delete_button(
                         app.tr(Msg::VisualTableDeleteTable),
                         delete_enabled.then(|| delete_target.clone()),
+                        palette,
                         cx,
                     )),
             )
         })
         .children(rows.iter().enumerate().map(|(row_index, row)| {
             let background = if row_index == 0 {
-                rgb(0xf1f5f9)
+                frosted(palette.panel_bg, EMPHASIS_GLASS_ALPHA, 0.12)
             } else {
-                rgb(0xffffff)
+                frosted(palette.surface_bg, COMPONENT_GLASS_ALPHA, 0.04)
             };
             let is_last_row = row_index + 1 == rows.len();
             div()
                 .flex()
                 .bg(background)
                 .when(!is_last_row, |style| {
-                    style.border_b_1().border_color(rgb(0xe2e8f0))
+                    style.border_b_1().border_color(palette.border)
                 })
                 .children(row.iter().enumerate().map(|(cell_index, cell)| {
                     let is_last_cell = cell_index + 1 == row.len();
@@ -6226,7 +6308,7 @@ pub(super) fn visual_table_view(
                     preview_table_cell_flex(column_weights.get(cell_index).copied().unwrap_or(1.0))
                         .p_2()
                         .when(!is_last_cell, |style| {
-                            style.border_r_1().border_color(rgb(0xe2e8f0))
+                            style.border_r_1().border_color(palette.border)
                         })
                         .text_size(px(typography.table_font_size))
                         .cursor(CursorStyle::IBeam)
@@ -6430,10 +6512,11 @@ fn html_table_grid_view(
     cx: &mut Context<MarkionApp>,
 ) -> Div {
     let columns = grid.columns.max(1).min(u16::MAX as usize) as u16;
-    let border = rgb(0xe2e8f0);
-    let outer_border = rgb(0xcbd5e1);
-    let header_bg = rgb(0xf1f5f9);
-    let body_bg = rgb(0xffffff);
+    let palette = app.palette();
+    let border = palette.border;
+    let outer_border = palette.border;
+    let header_bg = frosted(palette.panel_bg, EMPHASIS_GLASS_ALPHA, 0.12);
+    let body_bg = frosted(palette.surface_bg, COMPONENT_GLASS_ALPHA, 0.04);
     let font_size = typography.table_font_size;
     let padding = 8.0f32;
 
@@ -6563,17 +6646,19 @@ fn html_table_grid_view(
 fn code_copy_button(
     app: &MarkionApp,
     code: String,
-    palette: &CodePalette,
     cx: &mut Context<MarkionApp>,
 ) -> Div {
     let typography = app.typography_metrics();
+    let theme = app.palette();
     div()
         .flex_none()
         .px_2()
         .py_1()
         .rounded_sm()
-        .bg(palette.copy_bg)
-        .text_color(palette.accent)
+        .border_1()
+        .border_color(theme.border)
+        .bg(app.glass_surface(theme.panel_bg, CONTROL_GLASS_ALPHA, 0.08))
+        .text_color(theme.active_text)
         .text_size(px(typography.small_font_size))
         .cursor_pointer()
         .child(t(app.language, Msg::ItemCopyCode))
@@ -6645,7 +6730,7 @@ fn code_block_header_with_language(
             ));
         }
     }
-    header.child(code_copy_button(app, code, palette, cx))
+    header.child(code_copy_button(app, code, cx))
 }
 
 /// Compact, obviously-clickable editable chip for the fence's first info-string
@@ -6715,12 +6800,20 @@ fn code_block_view(
 ) -> Div {
     let typography = app.typography_metrics();
     let palette = code_palette(code_theme);
+    let theme = app.palette();
     let highlighted = app.highlighted_code(language.as_deref(), code);
     let body = div()
         .mb_3()
         .p_3()
         .rounded_md()
-        .bg(palette.bg)
+        .border_1()
+        .border_color(theme.border)
+        .shadow_md()
+        .bg(app.glass_surface(
+            theme.surface_bg,
+            COMPONENT_GLASS_ALPHA,
+            0.04,
+        ))
         .text_color(palette.text)
         .font(code_slot_font(&app.resolved_font_families.code))
         .text_size(px(typography.code_font_size))
@@ -6835,6 +6928,7 @@ pub(super) fn preview_block_view(
     cx: &mut Context<MarkionApp>,
 ) -> Div {
     let typography = app.typography_metrics();
+    let palette = app.palette();
     match block {
         PreviewBlock::Heading { level, text, .. } => {
             let heading_size = typography.heading_font_size((*level).into());
@@ -6893,9 +6987,9 @@ pub(super) fn preview_block_view(
                 },
             };
             let marker_color = match checked {
-                Some(true) => rgb(0x16a34a),
-                Some(false) => rgb(0x64748b),
-                None => rgb(0x64748b),
+                Some(true) => palette.active_text,
+                Some(false) => palette.muted,
+                None => palette.muted,
             };
             div()
                 .mb_1()
@@ -6930,8 +7024,8 @@ pub(super) fn preview_block_view(
                 .mb_3()
                 .pl_3()
                 .border_l_1()
-                .border_color(rgb(0x94a3b8))
-                .text_color(rgb(0x475569))
+                .border_color(palette.border)
+                .text_color(palette.muted)
                 .text_size(px(typography.quote_font_size))
                 .line_height(px(typography.quote_line_height));
             for (child_index, child) in children.iter().enumerate() {
@@ -6985,8 +7079,8 @@ pub(super) fn preview_block_view(
                     },
                 };
                 let marker_color = match checked {
-                    Some(true) => rgb(0x16a34a),
-                    _ => rgb(0x64748b),
+                    Some(true) => palette.active_text,
+                    _ => palette.muted,
                 };
                 container = container.child(
                     div()
@@ -7025,8 +7119,8 @@ pub(super) fn preview_block_view(
                     .p_3()
                     .rounded_md()
                     .border_1()
-                    .border_color(rgb(0xcbd5e1))
-                    .bg(rgb(0xffffff))
+                    .border_color(palette.border)
+                    .bg(frosted(palette.surface_bg, COMPONENT_GLASS_ALPHA, 0.04))
                     .overflow_hidden()
                     // The raster is supersampled, and `RenderImage::scale_factor`
                     // can't say so, so an auto-sized element would resolve to the
@@ -7040,12 +7134,12 @@ pub(super) fn preview_block_view(
                     .p_3()
                     .rounded_md()
                     .border_1()
-                    .border_color(rgb(0xbfdbfe))
-                    .bg(rgb(0xeff6ff))
+                    .border_color(palette.border)
+                    .bg(glass(palette.active_bg, 0.5))
                     .child(
                         div()
                             .mb_2()
-                            .text_color(rgb(0x1d4ed8))
+                            .text_color(palette.active_text)
                             .child(t(app.language, Msg::DiagramLoading)),
                     )
                     .child(code_block_view(
@@ -7063,12 +7157,12 @@ pub(super) fn preview_block_view(
                     .p_3()
                     .rounded_md()
                     .border_1()
-                    .border_color(rgb(0xfca5a5))
-                    .bg(rgb(0xfef2f2))
+                    .border_color(glass(palette.invalid, 0.58))
+                    .bg(frosted(palette.surface_bg, COMPONENT_GLASS_ALPHA, 0.04))
                     .child(
                         div()
                             .mb_2()
-                            .text_color(rgb(0xb91c1c))
+                            .text_color(palette.invalid)
                             .child(app.diagram_error_message(&error)),
                     )
                     .child(code_block_view(
@@ -7158,14 +7252,14 @@ pub(super) fn preview_block_view(
                         .rounded_md()
                         .border_1()
                         .border_color(if error.is_some() {
-                            rgb(0xfca5a5)
+                            glass(palette.invalid, 0.58)
                         } else {
-                            rgb(0xcbd5e1)
+                            palette.border
                         })
                         .bg(if error.is_some() {
-                            rgb(0xfef2f2)
+                            frosted(palette.surface_bg, COMPONENT_GLASS_ALPHA, 0.04)
                         } else {
-                            rgb(0xf8fafc)
+                            frosted(palette.panel_bg, COMPONENT_GLASS_ALPHA, 0.08)
                         })
                         .child(div().mb_2().text_size(px(12.)).child(label))
                         .when_some(detail, |panel, detail| {
@@ -7173,7 +7267,7 @@ pub(super) fn preview_block_view(
                                 div()
                                     .mb_2()
                                     .text_size(px(11.))
-                                    .text_color(rgb(0xb91c1c))
+                                    .text_color(palette.invalid)
                                     .child(detail),
                             )
                         })
@@ -7200,13 +7294,13 @@ pub(super) fn preview_block_view(
             None,
             None,
         )),
-        PreviewBlock::Rule { .. } => div().my_3().h(px(1.)).bg(rgb(0xcbd5e1)),
+        PreviewBlock::Rule { .. } => div().my_3().h(px(1.)).bg(palette.border),
         PreviewBlock::FootnoteDefinition { label, text, .. } => div()
             .mb(px(typography.paragraph_spacing))
             .mt_2()
             .pt_2()
             .border_t_1()
-            .border_color(rgb(0xe2e8f0))
+            .border_color(palette.border)
             .flex()
             .items_start()
             .gap_2()
@@ -7216,7 +7310,7 @@ pub(super) fn preview_block_view(
                 div()
                     .flex_none()
                     .text_size(px(typography.rendered_font_size * 0.75))
-                    .text_color(rgb(0x64748b))
+                    .text_color(palette.muted)
                     .child(format!("[{label}]")),
             )
             .child(div().flex_1().min_w_0().child(rich_text_with_math_element(
@@ -7239,21 +7333,21 @@ pub(super) fn preview_block_view(
             div()
                 .mb_3()
                 .border_1()
-                .border_color(rgb(0xcbd5e1))
+                .border_color(palette.border)
                 .rounded_md()
                 .overflow_hidden()
                 .children(rows.iter().enumerate().map(|(row_index, row)| {
                     let background = if row_index == 0 {
-                        rgb(0xf1f5f9)
+                        frosted(palette.panel_bg, EMPHASIS_GLASS_ALPHA, 0.12)
                     } else {
-                        rgb(0xffffff)
+                        frosted(palette.surface_bg, COMPONENT_GLASS_ALPHA, 0.04)
                     };
                     let is_last_row = row_index + 1 == rows.len();
                     div()
                         .flex()
                         .bg(background)
                         .when(!is_last_row, |style| {
-                            style.border_b_1().border_color(rgb(0xe2e8f0))
+                            style.border_b_1().border_color(palette.border)
                         })
                         .children(row.iter().enumerate().map(|(cell_index, cell)| {
                             let is_last_cell = cell_index + 1 == row.len();
@@ -7262,7 +7356,7 @@ pub(super) fn preview_block_view(
                             )
                             .p_2()
                             .when(!is_last_cell, |style| {
-                                style.border_r_1().border_color(rgb(0xe2e8f0))
+                                style.border_r_1().border_color(palette.border)
                             })
                             .text_size(px(typography.table_font_size))
                             .child(rich_text_element(
@@ -7296,6 +7390,7 @@ pub(super) fn preview_table_button(
     edit: TableEdit,
     status: Msg,
     target: Option<VisualTableToolbarTarget>,
+    palette: ThemePalette,
     cx: &mut Context<MarkionApp>,
 ) -> Div {
     let button = div()
@@ -7310,15 +7405,15 @@ pub(super) fn preview_table_button(
 
     let Some(target) = target else {
         return button
-            .border_color(rgb(0xe2e8f0))
-            .bg(rgb(0xf8fafc))
-            .text_color(rgb(0x94a3b8));
+            .border_color(palette.border)
+            .bg(frosted(palette.panel_bg, 0.6, 0.08))
+            .text_color(palette.muted);
     };
 
     button
-        .border_color(rgb(0xcbd5e1))
-        .bg(rgb(0xffffff))
-        .text_color(rgb(0x334155))
+        .border_color(palette.border)
+        .bg(frosted(palette.surface_bg, COMPONENT_GLASS_ALPHA, 0.04))
+        .text_color(palette.text)
         .cursor_pointer()
         .on_mouse_down(
             MouseButton::Left,
@@ -7353,6 +7448,7 @@ pub(super) fn preview_table_button(
 pub(super) fn preview_table_delete_button(
     label: &'static str,
     target: Option<BlockTarget>,
+    palette: ThemePalette,
     cx: &mut Context<MarkionApp>,
 ) -> Div {
     let enabled = target.is_some();
@@ -7374,15 +7470,15 @@ pub(super) fn preview_table_delete_button(
 
     let Some(target) = target else {
         return button
-            .border_color(rgb(0xe2e8f0))
-            .bg(rgb(0xf8fafc))
-            .text_color(rgb(0x94a3b8));
+            .border_color(palette.border)
+            .bg(frosted(palette.panel_bg, 0.6, 0.08))
+            .text_color(palette.muted);
     };
 
     button
-        .border_color(rgb(0xcbd5e1))
-        .bg(rgb(0xffffff))
-        .text_color(rgb(0x334155))
+        .border_color(palette.border)
+        .bg(frosted(palette.surface_bg, COMPONENT_GLASS_ALPHA, 0.04))
+        .text_color(palette.text)
         .cursor_pointer()
         .on_mouse_down(
             MouseButton::Left,
@@ -7455,17 +7551,14 @@ fn is_http_resource(url: &str) -> bool {
             .is_some_and(|prefix| prefix.eq_ignore_ascii_case("https://"))
 }
 
-/// Full color set for rendered fenced code blocks: block chrome plus one
-/// color per syntax token class. The Dark values are the historical look,
-/// copied verbatim; the Light token colors mirror the PDF-export light
-/// palette so a light code block matches its printed form.
+/// Syntax color set for fenced code blocks. Surface chrome comes from the
+/// active application theme; these palettes only keep tokens readable in the
+/// corresponding light or dark context.
 pub(super) struct CodePalette {
-    pub(super) bg: Rgba,
     pub(super) text: Rgba,
     pub(super) gutter: Rgba,
-    /// Language label and copy-button accent.
+    /// Language label and editable info-chip accent.
     pub(super) accent: Rgba,
-    pub(super) copy_bg: Rgba,
     plain: Rgba,
     keyword: Rgba,
     string: Rgba,
@@ -7475,12 +7568,6 @@ pub(super) struct CodePalette {
 }
 
 pub(super) const CODE_PALETTE_DARK: CodePalette = CodePalette {
-    bg: Rgba {
-        r: 0.058823529,
-        g: 0.090196078,
-        b: 0.16470588,
-        a: 1.0,
-    },
     text: Rgba {
         r: 0.88627451,
         g: 0.90980392,
@@ -7497,12 +7584,6 @@ pub(super) const CODE_PALETTE_DARK: CodePalette = CodePalette {
         r: 0.57647059,
         g: 0.77254902,
         b: 0.99215686,
-        a: 1.0,
-    },
-    copy_bg: Rgba {
-        r: 0.11764706,
-        g: 0.16078431,
-        b: 0.23137255,
         a: 1.0,
     },
     plain: Rgba {
@@ -7544,12 +7625,6 @@ pub(super) const CODE_PALETTE_DARK: CodePalette = CodePalette {
 };
 
 pub(super) const CODE_PALETTE_LIGHT: CodePalette = CodePalette {
-    bg: Rgba {
-        r: 0.96470588,
-        g: 0.97254902,
-        b: 0.98039216,
-        a: 1.0,
-    },
     text: Rgba {
         r: 0.14117647,
         g: 0.16078431,
@@ -7566,12 +7641,6 @@ pub(super) const CODE_PALETTE_LIGHT: CodePalette = CodePalette {
         r: 0.035294118,
         g: 0.41176471,
         b: 0.85490196,
-        a: 1.0,
-    },
-    copy_bg: Rgba {
-        r: 0.91764706,
-        g: 0.93333333,
-        b: 0.94901961,
         a: 1.0,
     },
     plain: Rgba {
